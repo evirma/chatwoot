@@ -5,6 +5,7 @@ import { useUISettings } from 'dashboard/composables/useUISettings';
 import { useWindowSize } from '@vueuse/core';
 import { vOnClickOutside } from '@vueuse/components';
 import wootConstants from 'dashboard/constants/globals';
+import EvirmaPanel from './EvirmaPanel.vue'; // EVIRMA: persistent right panel.
 
 defineProps({
   currentChat: {
@@ -59,6 +60,8 @@ const closeContactPanel = () => {
       },
     ]"
   >
+    <!-- EVIRMA: keep the app outside the scrolling contact panel. -->
+    <EvirmaPanel :current-chat="currentChat" />
     <div class="flex flex-1 overflow-auto">
       <ContactPanel
         v-show="activeTab === 0"
