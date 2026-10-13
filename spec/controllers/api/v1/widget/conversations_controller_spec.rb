@@ -345,6 +345,18 @@ RSpec.describe '/api/v1/widget/conversations/toggle_typing', type: :request do
         # conversation custom attributes should have "product_name" key with value "Chatwoot"
         expect(conversation.custom_attributes).to include('product_name' => 'Chatwoot')
       end
+
+      # EVIRMA: атрибуты от другого клиента виджета не стираются.
+      it 'keeps previously set attributes' do
+        conversation.update!(custom_attributes: { 'wb_page_url' => 'https://seller.wildberries.ru/' })
+        post '/api/v1/widget/conversations/set_custom_attributes',
+             headers: { 'X-Auth-Token' => token },
+             params: params,
+             as: :json
+
+        expect(conversation.reload.custom_attributes)
+          .to include('product_name' => 'Chatwoot', 'wb_page_url' => 'https://seller.wildberries.ru/')
+      end
     end
   end
 
