@@ -65,7 +65,8 @@ class Api::V1::Widget::ConversationsController < Api::V1::Widget::BaseController
   end
 
   def set_custom_attributes
-    conversation.update!(custom_attributes: permitted_params[:custom_attributes])
+    # EVIRMA: кабинет и расширение пишут в один разговор разные ключи — дополняем, а не заменяем.
+    conversation.update!(custom_attributes: conversation.custom_attributes.merge(permitted_params[:custom_attributes].to_h))
   end
 
   def destroy_custom_attributes
