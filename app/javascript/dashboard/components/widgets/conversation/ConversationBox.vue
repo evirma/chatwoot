@@ -37,8 +37,13 @@ export default {
   computed: {
     ...mapGetters({
       currentChat: 'getSelectedChat',
-      dashboardApps: 'dashboardApps/getRecords',
+      allDashboardApps: 'dashboardApps/getRecords', // EVIRMA: sidebar app only.
     }),
+    dashboardApps() {
+      return this.allDashboardApps.filter(
+        app => app.title !== 'evirma:right-panel'
+      );
+    },
     dashboardAppTabs() {
       return [
         {
