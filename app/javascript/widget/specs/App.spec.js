@@ -12,6 +12,7 @@ import { emitter } from 'shared/helpers/mitt';
 describe('App availability-changed', () => {
   let store;
   let wrapper;
+  let router;
   let postMessage;
   let listeners;
 
@@ -26,6 +27,7 @@ describe('App availability-changed', () => {
       modules: {
         agent: {
           ...agent,
+          actions: { ...agent.actions, fetchAvailableAgents: vi.fn() },
           state: {
             records: [],
             uiFlags: { hasFetched: false, isError: false },
@@ -55,7 +57,7 @@ describe('App availability-changed', () => {
         },
       },
     });
-    const router = createRouter({
+    router = createRouter({
       history: createMemoryHistory(),
       routes: [{ path: '/', name: 'home', component: { template: '<div />' } }],
     });
@@ -73,7 +75,7 @@ describe('App availability-changed', () => {
   });
 
   afterEach(() => {
-    wrapper.unmount();
+    wrapper?.unmount();
     listeners.mock.calls
       .filter(([event]) => event === 'message')
       .forEach(([event, handler]) =>
@@ -82,6 +84,7 @@ describe('App availability-changed', () => {
     emitter.all.clear();
     delete window.chatwootWebChannel;
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it.each([
@@ -144,6 +147,38 @@ describe('App availability-changed', () => {
       'chatwoot-widget:{"event":"availability-changed","isOnline":true}',
       '*'
     );
+  });
+
+  it('refreshes agent availability every 60 seconds and stops after unmount', async () => {
+    // EVIRMA: Keep host availability current without a presence websocket event.
+    wrapper.unmount();
+    wrapper = null;
+    vi.useFakeTimers();
+    wrapper = shallowMount(App, {
+      global: { plugins: [store, router], stubs: { 'router-view': true } },
+    });
+    const dispatch = vi.spyOn(store, 'dispatch');
+    dispatch.mockClear();
+
+    await vi.advanceTimersByTimeAsync(59 * 1000 + 999);
+    expect(dispatch).not.toHaveBeenCalledWith(
+      'agent/fetchAvailableAgents',
+      'token'
+    );
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith(
+      'agent/fetchAvailableAgents',
+      'token'
+    );
+
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(dispatch).toHaveBeenCalledTimes(2);
+
+    wrapper.unmount();
+    wrapper = null;
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(dispatch).toHaveBeenCalledTimes(2);
   });
 
   it('uses the header availability rule outside business hours', async () => {

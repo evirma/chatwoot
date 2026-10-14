@@ -23,7 +23,8 @@ describe('#actions', () => {
       await actions.fetchAvailableAgents({ commit }, websiteToken);
 
       expect(getFromCache).toHaveBeenCalledWith(
-        `chatwoot_available_agents_${websiteToken}`
+        `chatwoot_available_agents_${websiteToken}`,
+        60 * 1000
       );
       expect(getAvailableAgents).not.toHaveBeenCalled();
       expect(setCache).not.toHaveBeenCalled();
@@ -39,7 +40,8 @@ describe('#actions', () => {
       await actions.fetchAvailableAgents({ commit }, websiteToken);
 
       expect(getFromCache).toHaveBeenCalledWith(
-        `chatwoot_available_agents_${websiteToken}`
+        `chatwoot_available_agents_${websiteToken}`,
+        60 * 1000
       );
       expect(getAvailableAgents).toHaveBeenCalledWith(websiteToken);
       expect(setCache).toHaveBeenCalledWith(
@@ -49,6 +51,32 @@ describe('#actions', () => {
       expect(commit).toHaveBeenCalledWith('setAgents', agents);
       expect(commit).toHaveBeenCalledWith('setError', false);
       expect(commit).toHaveBeenCalledWith('setHasFetched', true);
+    });
+
+    it('fetches agents when cached data is older than 60 seconds', async () => {
+      // EVIRMA: A stale availability cache must not hide a status change.
+      const {
+        getFromCache: readCache,
+        setCache: writeCache,
+        clearCache,
+      } = await vi.importActual('shared/helpers/cache');
+      const cacheKey = `chatwoot_available_agents_${websiteToken}`;
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-14T00:00:00Z'));
+      writeCache(cacheKey, agents);
+      vi.advanceTimersByTime(60 * 1000 + 1);
+      getFromCache.mockImplementationOnce(readCache);
+      getAvailableAgents.mockResolvedValue({ data: { payload: agents } });
+
+      try {
+        await actions.fetchAvailableAgents({ commit }, websiteToken);
+
+        expect(getFromCache).toHaveBeenCalledWith(cacheKey, 60 * 1000);
+        expect(getAvailableAgents).toHaveBeenCalledWith(websiteToken);
+      } finally {
+        clearCache(cacheKey);
+        vi.useRealTimers();
+      }
     });
 
     it('sends correct actions if API is success', async () => {
