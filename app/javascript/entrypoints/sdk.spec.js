@@ -57,3 +57,23 @@ describe('$chatwoot.setUser', () => {
     });
   });
 });
+
+// EVIRMA: Verify the host setting reaches the SDK configuration.
+describe('$chatwoot.hideHeader', () => {
+  afterEach(() => {
+    delete window.$chatwoot;
+    delete window.chatwootSettings;
+  });
+
+  it.each([undefined, false, true])('reads hideHeader=%s', hideHeader => {
+    delete window.$chatwoot;
+    window.chatwootSettings = { hideHeader };
+
+    window.chatwootSDK.run({
+      baseUrl: 'https://app.chatwoot.com',
+      websiteToken: 'website-token',
+    });
+
+    expect(window.$chatwoot.hideHeader).toBe(hideHeader === true);
+  });
+});
