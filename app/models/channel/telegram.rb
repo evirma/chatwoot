@@ -32,7 +32,7 @@ class Channel::Telegram < ApplicationRecord
   end
 
   def telegram_api_url
-    "https://api.telegram.org/bot#{bot_token}"
+    "#{telegram_api_base_url}/bot#{bot_token}"
   end
 
   def send_message_on_telegram(message)
@@ -56,7 +56,7 @@ class Channel::Telegram < ApplicationRecord
     response = HTTParty.get("#{telegram_api_url}/getFile", query: { file_id: file_id })
     return nil unless response.success?
 
-    "https://api.telegram.org/file/bot#{bot_token}/#{response.parsed_response['result']['file_path']}"
+    "#{telegram_api_base_url}/file/bot#{bot_token}/#{response.parsed_response['result']['file_path']}"
   end
 
   def process_error(message, response)
@@ -82,6 +82,11 @@ class Channel::Telegram < ApplicationRecord
 
   private
 
+  # EVIRMA: Сервер в РФ не достаёт Telegram, поэтому запросы Bot API должны идти через релей.
+  def telegram_api_base_url
+    ENV.fetch('TELEGRAM_API_URL', 'https://api.telegram.org')
+  end
+
   def ensure_valid_bot_token
     response = HTTParty.get("#{telegram_api_url}/getMe")
     unless response.success?
@@ -96,7 +101,8 @@ class Channel::Telegram < ApplicationRecord
     HTTParty.post("#{telegram_api_url}/deleteWebhook")
     response = HTTParty.post("#{telegram_api_url}/setWebhook",
                              body: {
-                               url: "#{ENV.fetch('FRONTEND_URL', nil)}/webhooks/telegram/#{bot_token}"
+                               # EVIRMA: Входящие вебхуки Telegram должны приходить через релей.
+                               url: "#{ENV.fetch('TELEGRAM_WEBHOOK_BASE_URL', ENV.fetch('FRONTEND_URL', nil))}/webhooks/telegram/#{bot_token}"
                              })
     errors.add(:bot_token, 'error setting up the webook') unless response.success?
   end

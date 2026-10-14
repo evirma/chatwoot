@@ -3,6 +3,101 @@ require 'rails_helper'
 RSpec.describe Channel::Telegram do
   let(:telegram_channel) { create(:channel_telegram) }
 
+  describe '#telegram_api_url' do
+    it 'uses the configured Bot API base URL' do
+      with_modified_env TELEGRAM_API_URL: 'https://telegram-api-relay.example' do
+        expect(telegram_channel.telegram_api_url).to eq('https://telegram-api-relay.example/bot2324234324')
+      end
+    end
+
+    it 'uses the default Bot API base URL when no override is configured' do
+      with_modified_env TELEGRAM_API_URL: nil do
+        expect(telegram_channel.telegram_api_url).to eq('https://api.telegram.org/bot2324234324')
+      end
+    end
+  end
+
+  describe '#get_telegram_file_path' do
+    it 'uses the configured Bot API base URL for file downloads' do
+      api_base_url = 'https://telegram-api-relay.example'
+
+      with_modified_env TELEGRAM_API_URL: api_base_url do
+        request = stub_request(:get, "#{api_base_url}/bot#{telegram_channel.bot_token}/getFile")
+                  .with(query: { file_id: 'file-id' })
+                  .to_return(
+                    status: 200,
+                    body: { result: { file_path: 'documents/file.pdf' } }.to_json,
+                    headers: { 'Content-Type' => 'application/json' }
+                  )
+
+        expect(telegram_channel.get_telegram_file_path('file-id')).to eq(
+          "#{api_base_url}/file/bot#{telegram_channel.bot_token}/documents/file.pdf"
+        )
+        expect(request).to have_been_requested
+      end
+    end
+
+    it 'uses the default Bot API base URL for file downloads when no override is configured' do
+      with_modified_env TELEGRAM_API_URL: nil do
+        request = stub_request(:get, "https://api.telegram.org/bot#{telegram_channel.bot_token}/getFile")
+                  .with(query: { file_id: 'file-id' })
+                  .to_return(
+                    status: 200,
+                    body: { result: { file_path: 'documents/file.pdf' } }.to_json,
+                    headers: { 'Content-Type' => 'application/json' }
+                  )
+
+        expect(telegram_channel.get_telegram_file_path('file-id')).to eq(
+          "https://api.telegram.org/file/bot#{telegram_channel.bot_token}/documents/file.pdf"
+        )
+        expect(request).to have_been_requested
+      end
+    end
+  end
+
+  describe 'webhook setup' do
+    let(:telegram_channel) { described_class.new(bot_token: '2324234324', account: create(:account)) }
+
+    before do
+      allow(telegram_channel).to receive(:ensure_valid_bot_token)
+    end
+
+    it 'uses the configured webhook base URL' do
+      api_base_url = 'https://telegram-api-relay.example'
+      webhook_base_url = 'https://telegram-webhook-relay.example'
+      bot_url = "#{api_base_url}/bot#{telegram_channel.bot_token}"
+
+      with_modified_env TELEGRAM_API_URL: api_base_url,
+                        TELEGRAM_WEBHOOK_BASE_URL: webhook_base_url,
+                        FRONTEND_URL: 'https://app.example.com' do
+        stub_request(:post, "#{bot_url}/deleteWebhook").to_return(status: 200)
+        request = stub_request(:post, "#{bot_url}/setWebhook")
+                  .with(body: { url: "#{webhook_base_url}/webhooks/telegram/#{telegram_channel.bot_token}" })
+                  .to_return(status: 200)
+
+        expect(telegram_channel.save).to be true
+        expect(request).to have_been_requested
+      end
+    end
+
+    it 'uses FRONTEND_URL when no webhook base URL is configured' do
+      frontend_url = 'https://app.example.com'
+      bot_url = "https://api.telegram.org/bot#{telegram_channel.bot_token}"
+
+      with_modified_env TELEGRAM_API_URL: nil,
+                        TELEGRAM_WEBHOOK_BASE_URL: nil,
+                        FRONTEND_URL: frontend_url do
+        stub_request(:post, "#{bot_url}/deleteWebhook").to_return(status: 200)
+        request = stub_request(:post, "#{bot_url}/setWebhook")
+                  .with(body: { url: "#{frontend_url}/webhooks/telegram/#{telegram_channel.bot_token}" })
+                  .to_return(status: 200)
+
+        expect(telegram_channel.save).to be true
+        expect(request).to have_been_requested
+      end
+    end
+  end
+
   describe '#convert_markdown_to_telegram_html' do
     subject { telegram_channel.send(:convert_markdown_to_telegram_html, text) }
 
