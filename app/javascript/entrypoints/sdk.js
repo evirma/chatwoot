@@ -60,6 +60,8 @@ const runSDK = ({ baseUrl, websiteToken }) => {
     baseDomain,
     hasLoaded: false,
     hideMessageBubble: chatwootSettings.hideMessageBubble || false,
+    // EVIRMA: Allow the host page to hide both widget headers.
+    hideHeader: chatwootSettings.hideHeader === true,
     isOpen: false,
     position: chatwootSettings.position === 'left' ? 'left' : 'right',
     websiteToken,

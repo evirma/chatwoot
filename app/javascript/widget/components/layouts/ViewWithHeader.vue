@@ -108,7 +108,9 @@ export default {
     @keydown.esc="closeWindow"
   >
     <div class="relative flex flex-col h-full">
+      <!-- EVIRMA: Hide the shared wrapper for both expanded and compact headers. -->
       <div
+        v-if="!appConfig.hideHeader"
         :class="{
           expanded: !isHeaderCollapsed,
           collapsed: isHeaderCollapsed,

@@ -1,5 +1,7 @@
 <script>
-import { mapGetters, mapActions } from 'vuex';
+// EVIRMA: Observe the shared agent store independently of header rendering.
+import { mapGetters, mapActions, useStore } from 'vuex';
+import { computed, watch } from 'vue';
 import { setHeader } from 'widget/helpers/axios';
 import addHours from 'date-fns/addHours';
 import { IFrameHelper, RNHelper } from 'widget/helpers/utils';
@@ -32,7 +34,28 @@ export default {
   setup() {
     const { prefersDarkMode } = useDarkMode();
     const router = useRouter();
-    const { isInWorkingHours } = useAvailability();
+    // EVIRMA: Reuse the header's availability rule and wait for loaded agents.
+    const store = useStore();
+    const availableAgents = computed(
+      () => store.getters['agent/availableAgents']
+    );
+    const { isInWorkingHours, isOnline } = useAvailability(availableAgents);
+    const availability = computed(() => {
+      const { hasFetched, isError } = store.state.agent.uiFlags;
+      return hasFetched && !isError ? isOnline.value : null;
+    });
+    watch(
+      availability,
+      value => {
+        if (value !== null && IFrameHelper.isIFrame()) {
+          IFrameHelper.sendMessage({
+            event: 'availability-changed',
+            isOnline: value,
+          });
+        }
+      },
+      { immediate: true }
+    );
 
     return { prefersDarkMode, router, isInWorkingHours };
   },
