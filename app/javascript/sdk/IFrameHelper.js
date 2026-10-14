@@ -160,6 +160,8 @@ export const IFrameHelper = {
         locale: window.$chatwoot.locale,
         position: window.$chatwoot.position,
         hideMessageBubble: window.$chatwoot.hideMessageBubble,
+        // EVIRMA: Pass header visibility to the widget configuration store.
+        hideHeader: window.$chatwoot.hideHeader,
         showPopoutButton: window.$chatwoot.showPopoutButton,
         widgetStyle: window.$chatwoot.widgetStyle,
         darkMode: window.$chatwoot.darkMode,
@@ -201,6 +203,13 @@ export const IFrameHelper = {
     },
     onEvent({ eventIdentifier: eventName, data }) {
       dispatchWindowEvent({ eventName, data });
+    },
+    // EVIRMA: Expose widget availability through the SDK's window events.
+    'availability-changed': ({ isOnline }) => {
+      dispatchWindowEvent({
+        eventName: 'chatwoot:availability-changed',
+        data: { isOnline },
+      });
     },
     setBubbleLabel(message) {
       setBubbleText(window.$chatwoot.launcherTitle || message.label);
