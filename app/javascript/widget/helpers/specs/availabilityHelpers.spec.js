@@ -446,7 +446,7 @@ describe('availabilityHelpers', () => {
       expect(isOnline(false, new Date(), 'UTC', [], false)).toBe(false);
     });
 
-    it('should check both working hours and agents when enabled', () => {
+    it('should use working hours when enabled', () => {
       const mockDate = new Date('2024-01-15T10:00:00.000Z');
       mockDate.getDay = vi.fn().mockReturnValue(1);
       mockDate.getHours = vi.fn().mockReturnValue(10);
@@ -455,16 +455,12 @@ describe('availabilityHelpers', () => {
 
       const workingHours = [{ dayOfWeek: 1, openHour: 9, closeHour: 17 }];
 
-      // In working hours + agents available = online
+      // In working hours, the widget is online regardless of agent presence
       expect(isOnline(true, new Date(), 'UTC', workingHours, true)).toBe(true);
-
-      // In working hours but no agents = offline
-      expect(isOnline(true, new Date(), 'UTC', workingHours, false)).toBe(
-        false
-      );
+      expect(isOnline(true, new Date(), 'UTC', workingHours, false)).toBe(true);
     });
 
-    it('should return false when outside working hours even with agents', () => {
+    it('should return false outside working hours', () => {
       const mockDate = new Date('2024-01-15T08:00:00.000Z');
       mockDate.getDay = vi.fn().mockReturnValue(1);
       mockDate.getHours = vi.fn().mockReturnValue(8);
@@ -474,9 +470,12 @@ describe('availabilityHelpers', () => {
       const workingHours = [{ dayOfWeek: 1, openHour: 9, closeHour: 17 }];
 
       expect(isOnline(true, new Date(), 'UTC', workingHours, true)).toBe(false);
+      expect(isOnline(true, new Date(), 'UTC', workingHours, false)).toBe(
+        false
+      );
     });
 
-    it('should handle open_all_day with agents', () => {
+    it('should use open_all_day regardless of agent presence', () => {
       const mockDate = new Date('2024-01-15T02:00:00.000Z');
       mockDate.getDay = vi.fn().mockReturnValue(1);
       mockDate.getHours = vi.fn().mockReturnValue(2);
@@ -486,9 +485,7 @@ describe('availabilityHelpers', () => {
       const workingHours = [{ dayOfWeek: 1, openAllDay: true }];
 
       expect(isOnline(true, new Date(), 'UTC', workingHours, true)).toBe(true);
-      expect(isOnline(true, new Date(), 'UTC', workingHours, false)).toBe(
-        false
-      );
+      expect(isOnline(true, new Date(), 'UTC', workingHours, false)).toBe(true);
     });
 
     it('should handle string date input', () => {
