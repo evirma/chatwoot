@@ -154,5 +154,8 @@
   },
   "FOOTER_REPLY_TO": {
     "REPLY_TO": "Ответить:"
+  },
+  "EVIRMA_CONTACT_HISTORY": {
+    "TITLE": "История из других каналов"
   }
 }

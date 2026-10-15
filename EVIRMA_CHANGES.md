@@ -8,6 +8,11 @@ CW1 добавляет постоянную панель EVIRMA над пане�
 
 | Штатный файл | Строки / суть | Зачем | Риск конфликта | Проверка после слияния upstream |
 | --- | --- | --- | --- | --- |
+| `config/routes.rb`, `app/listeners/action_cable_listener.rb` | EVIRMA: маршрут `GET /api/v1/widget/contact_history` и вызов `Widget::ContactHistory` после штатного `message.created`. | Последние 100 публичных входящих/исходящих сообщений идентифицированного контакта из других каналов того же аккаунта; отдельное событие `contact.history_message.created` на веб-каналы этого контакта. | Низкий: два места подключения; проверять авторизацию виджета и штатный обработчик сообщений после обновления. | Запросить историю своим и чужим токеном, гостем; проверить исключение заметок, служебных сообщений и текущего канала. Ответить в MAX/Telegram/почте: сообщение появляется без перезагрузки только у своего контакта. |
+| `app/javascript/widget/components/ConversationWrap.vue`, `app/javascript/widget/store/index.js`, `app/javascript/widget/store/modules/contacts.js` | EVIRMA: подключить отдельные компонент и хранилище истории; сбрасывать историю при `setUser` и загружать с обновлённым токеном. | Сворачиваемая история перед текущей беседой; ограничение 100 сообщений, защита от восстановления прежнего контакта запоздавшим запросом. | Низкий: новые импорты и вызовы, штатные сообщения хранятся отдельно. | Открыть беседу, свернуть и развернуть историю; открыть виджет повторно; сменить контакт через SDK во время загрузки истории. |
+| `app/javascript/widget/helpers/actionCable.js`, `app/views/widgets/show.html.erb` | EVIRMA: передавать `inboxId`, исключать чужие каналы из штатных событий, обрабатывать отдельное событие истории и обновлять её после переподключения. | Избежать смешивания бесед и двойных уведомлений при штатной HMAC-рассылке. Исходящие сообщения истории вызывают `chatwoot:on-message` через штатный `IFrameHelper`. | Средний: при смене способа настройки виджета нужно сохранить `inboxId`. | С HMAC и без него, в том числе без текущей веб-беседы: один ответ из другого канала — одно событие родителю; ответ текущего канала идёт штатным путём. Восстановить соединение и проверить пропущенные сообщения. |
+| `app/javascript/widget/i18n/locale/en.json` | EVIRMA: исходная строка `EVIRMA_CONTACT_HISTORY.TITLE`; JSON не допускает комментариев, поэтому метка вынесена сюда и в имя ключа. | Заголовок «История из других каналов», английский источник `History from other channels`. | Низкий. | Переводы остальных языков, включая русский, поступают через Crowdin по правилам проекта. |
+| `app/javascript/dashboard/components/widgets/conversation/ConversationSidebar.vue` | Импорт `EvirmaPanel` рядом с другими импортами; компонент перед прокручиваемым `ContactPanel`. Обе правки помечены `EVIRMA:`. | Отображать приложение над контактом без изменения `activeTab` и скрытия колонки. | Низкий: три добавленные строки; проверить перенос или перестройку правой колонки. | Открыть два разговора по очереди: iframe сверху, контакт ниже прокручивается; кнопка скрытия колонки работает. Удалить приложение: панель исчезает, штатный интерфейс сохраняется. |
 | `app/javascript/dashboard/components/widgets/conversation/ConversationSidebar.vue` | Импорт `EvirmaPanel`; компонент перед `ContactPanel` в общей прокручиваемой колонке, вне аккордеонов. Правки помечены `EVIRMA:`. | Панель всегда развёрнута независимо от сохранённых состояний секций; контакт доступен прокруткой даже при высокой панели. | Низкий: проверить перенос или перестройку правой колонки. | Открыть два разговора по очереди с сохранёнными свёрнутыми секциями: iframe открыт сверху, контакт доступен ниже; кнопка скрытия колонки работает. Удалить приложение: панель исчезает, штатный интерфейс сохраняется. |
 | `app/javascript/dashboard/components/widgets/conversation/EvirmaPanel.vue` | Высота `calc(100vh - 4rem)`, минимум `56.25rem` (900 px). Правка помечена `EVIRMA:`. | Увеличить рабочую область приложения; не добавлять отдельную прокрутку вокруг iframe. | Низкий: свой компонент форка. | Проверить короткое и высокое окно: рамка не ниже 900 px, контакт доступен общей прокруткой колонки. |
 | `app/javascript/dashboard/components/widgets/conversation/ConversationBox.vue` | Получать исходный список как `allDashboardApps`; вычислять `dashboardApps`, исключая точное название `evirma:right-panel`. Правка помечена `EVIRMA:`. | Исключить приложение одновременно из вкладок, центральных фреймов и проверки наличия вкладок; сохранить их индексы. | Низкий: одна заменённая строка и пять добавленных; проверить изменения штатного списка Dashboard Apps. | Добавить обычные приложения до и после EVIRMA: вкладки открывают правильные страницы. Если есть только EVIRMA, центральные вкладки отсутствуют. Без EVIRMA обычные вкладки работают как прежде. |
@@ -51,3 +56,27 @@ iframe зависит от внешней страницы; она должна 
 На внешней странице настройка задаётся до `chatwootSDK.run`:
 `window.chatwootSettings = { hideHeader: true }`.
 Статус доступен через `window.addEventListener('chatwoot:availability-changed', event => event.detail.isOnline)`.
+
+EVIRMA: история клиента из других каналов реализована в новых файлах
+`app/controllers/api/v1/widget/contact_history_controller.rb`,
+`app/services/widget/contact_history.rb`,
+`app/javascript/widget/api/contactHistory.js`,
+`app/javascript/widget/store/modules/contactHistory.js`,
+`app/javascript/widget/components/EvirmaContactHistory.vue`.
+Авторизация использует штатные `website_token` и `X-Auth-Token`, контакт берётся
+только из найденного `contact_inbox`; переданные клиентом идентификаторы контактов
+не используются. Требуется непустой `identifier`. Входящие и исходящие сообщения
+имеют строковый `message_type` в API истории. Для события родительской странице
+исходящий тип приводится к штатному числу `1`, сохраняются `sender_type`,
+`conversation_id`, `inbox_id` и `account_id`.
+Вложения используют штатный `Attachment#push_event_data`, в блоке доступны ссылки
+для их открытия. Текст выводится с экранированием, без элементов ответа и редактирования.
+Новые запросы и трансляция используют общий отбор сообщений. `enterprise/` не меняется.
+
+Проверки истории:
+`node_modules/.bin/vitest run app/javascript/widget/components/specs/EvirmaContactHistory.spec.js app/javascript/widget/helpers/specs/evirmaContactHistory.spec.js app/javascript/widget/store/modules/specs/contactHistory.spec.js app/javascript/widget/helpers/specs/actionCable.spec.js app/javascript/widget/store/modules/specs/contact/actions.spec.js`.
+Проверки сервера после подготовки Ruby/Bundler и тестовой базы:
+`bundle exec rspec spec/controllers/api/v1/widget/contact_history_controller_spec.rb spec/listeners/evirma_contact_history_spec.rb spec/listeners/action_cable_listener_spec.rb`.
+Вручную проверить ответ из каждого канала, открытие вложений, повторное открытие
+виджета, переподключение, переключение пользователя через SDK и подписку расширения
+на `chatwoot:on-message`. Без `identifier` блока быть не должно.

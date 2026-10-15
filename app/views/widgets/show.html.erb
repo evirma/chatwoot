@@ -7,6 +7,8 @@
     <meta name="robots" content="noindex">
     <script>
       window.chatwootWebChannel = {
+        // EVIRMA: Distinguish native conversation messages from HMAC cross-inbox broadcasts.
+        inboxId: <%= @web_widget.inbox.id %>,
         avatarUrl: '<%= @web_widget.inbox.avatar_url %>',
         hasAConnectedAgentBot: '<%= @web_widget.inbox.agent_bot&.name %>',
         locale: '<%= @web_widget.account.locale %>',

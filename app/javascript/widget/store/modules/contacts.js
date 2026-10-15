@@ -76,6 +76,9 @@ export const actions = {
         data: { widget_auth_token: widgetAuthToken },
       } = await ContactsAPI.setUser(identifier, user);
       updateWidgetAuthToken(widgetAuthToken);
+      // EVIRMA: Clear the previous identity and invalidate pending history requests before reloading.
+      dispatch('contactHistory/reset', null, { root: true });
+      dispatch('contactHistory/fetch', null, { root: true });
       dispatch('get');
       if (identifierHash || widgetAuthToken) {
         dispatch('conversation/clearConversations', {}, { root: true });

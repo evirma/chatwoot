@@ -11,6 +11,8 @@ import globalConfig from 'shared/store/globalConfig';
 import message from 'widget/store/modules/message';
 import campaign from 'widget/store/modules/campaign';
 import article from 'widget/store/modules/articles';
+// EVIRMA: Cross-channel history has its own state and cannot affect conversation actions.
+import contactHistory from 'widget/store/modules/contactHistory';
 
 export default createStore({
   modules: {
@@ -25,5 +27,7 @@ export default createStore({
     message,
     campaign,
     article,
+    // EVIRMA: Read-only history from the contact's other inboxes.
+    contactHistory,
   },
 });

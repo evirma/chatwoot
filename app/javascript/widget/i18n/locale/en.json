@@ -1,4 +1,7 @@
 {
+  "EVIRMA_CONTACT_HISTORY": {
+    "TITLE": "History from other channels"
+  },
   "COMPONENTS": {
     "FILE_BUBBLE": {
       "DOWNLOAD": "Download",
