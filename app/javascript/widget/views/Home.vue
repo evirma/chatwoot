@@ -17,10 +17,26 @@ export default {
   },
   computed: {
     ...mapGetters({
+      // EVIRMA: Wait for messages before applying the existing prechat rule.
+      appConfig: 'appConfig/getAppConfig',
+      isFetchingList: 'conversation/getIsFetchingList',
       availableAgents: 'agent/availableAgents',
       conversationSize: 'conversation/getConversationSize',
       unreadMessageCount: 'conversation/getUnreadMessageCount',
     }),
+    // EVIRMA: Config-set can arrive after the initial home route has mounted.
+    shouldSkipHome() {
+      return this.appConfig.skipHome && !this.isFetchingList;
+    },
+  },
+  watch: {
+    // EVIRMA: Reuse normal conversation entry, including the channel's prechat form.
+    shouldSkipHome: {
+      immediate: true,
+      handler(shouldSkipHome) {
+        if (shouldSkipHome) this.startConversation();
+      },
+    },
   },
   methods: {
     startConversation() {

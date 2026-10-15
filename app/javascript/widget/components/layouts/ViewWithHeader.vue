@@ -44,6 +44,8 @@ export default {
       );
     },
     showBackButton() {
+      // EVIRMA: All back buttons lead to home, which the host has opted to skip.
+      if (this.appConfig.skipHome) return false;
       return ['article-viewer', 'messages', 'prechat-form'].includes(
         this.$route.name
       );

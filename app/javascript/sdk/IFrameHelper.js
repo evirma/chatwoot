@@ -162,6 +162,8 @@ export const IFrameHelper = {
         hideMessageBubble: window.$chatwoot.hideMessageBubble,
         // EVIRMA: Pass header visibility to the widget configuration store.
         hideHeader: window.$chatwoot.hideHeader,
+        // EVIRMA: Pass the home-screen preference through config-set.
+        skipHome: window.$chatwoot.skipHome,
         showPopoutButton: window.$chatwoot.showPopoutButton,
         widgetStyle: window.$chatwoot.widgetStyle,
         darkMode: window.$chatwoot.darkMode,
