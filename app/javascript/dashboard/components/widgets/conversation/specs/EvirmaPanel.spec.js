@@ -1,7 +1,12 @@
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import Frame from '../../DashboardApp/Frame.vue';
+import ConversationSidebar from '../ConversationSidebar.vue';
 import EvirmaPanel from '../EvirmaPanel.vue';
+
+vi.mock('dashboard/routes/dashboard/conversation/ContactPanel.vue', () => ({
+  default: { template: '<div />' },
+}));
 
 describe('EvirmaPanel', () => {
   const evirmaApp = {
@@ -18,8 +23,9 @@ describe('EvirmaPanel', () => {
   beforeEach(() => {
     getApps = vi.fn();
     store = createStore({
-      state: { records: [] },
+      state: { records: [], uiSettings: { is_contact_sidebar_open: true } },
       getters: {
+        getUISettings: state => state.uiSettings,
         'dashboardApps/getRecords': state => state.records,
         'contacts/getContact': () => () => ({ id: 2 }),
         getCurrentUser: () => ({
@@ -68,6 +74,8 @@ describe('EvirmaPanel', () => {
     const iframe = wrapper.find('iframe');
     expect(iframe.attributes('src')).toBe('https://evirma.example.com');
     expect(iframe.attributes('id')).toBe('dashboard-app--frame--1-0');
+    expect(wrapper.classes()).toContain('h-[calc(100vh-4rem)]');
+    expect(wrapper.classes()).toContain('min-h-[56.25rem]');
     const postMessage = vi.fn();
     Object.defineProperty(iframe.element, 'contentWindow', {
       value: { postMessage },
@@ -98,6 +106,27 @@ describe('EvirmaPanel', () => {
     expect(wrapper.find('div').exists()).toBe(false);
     expect(getApps).not.toHaveBeenCalled();
   });
+
+  it.each([{}, { is_conv_details_open: false, is_conv_actions_open: false }])(
+    'keeps the sidebar frame open without a toggle with saved settings %j',
+    async savedSettings => {
+      store.state.records = [evirmaApp];
+      Object.assign(store.state.uiSettings, savedSettings);
+      wrapper = shallowMount(ConversationSidebar, {
+        ...mountOptions,
+        global: {
+          ...mountOptions.global,
+          stubs: { ...mountOptions.global.stubs, EvirmaPanel: false },
+        },
+      });
+      await flushPromises();
+
+      const panel = wrapper.findComponent(EvirmaPanel);
+      expect(panel.isVisible()).toBe(true);
+      expect(panel.find('iframe').exists()).toBe(true);
+      expect(panel.find('button').exists()).toBe(false);
+    }
+  );
 
   it('opens the frame when the EVIRMA app finishes loading', async () => {
     wrapper = shallowMount(EvirmaPanel, mountOptions);
