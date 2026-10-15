@@ -17,11 +17,16 @@ export const getters = {
 };
 
 const CACHE_KEY_PREFIX = 'chatwoot_available_agents_';
+// EVIRMA: Availability cannot rely on the shared 24-hour cache lifetime.
+const AVAILABLE_AGENTS_CACHE_EXPIRY = 60 * 1000;
 
 export const actions = {
   fetchAvailableAgents: async ({ commit }, websiteToken) => {
     try {
-      const cachedData = getFromCache(`${CACHE_KEY_PREFIX}${websiteToken}`);
+      const cachedData = getFromCache(
+        `${CACHE_KEY_PREFIX}${websiteToken}`,
+        AVAILABLE_AGENTS_CACHE_EXPIRY
+      );
       if (cachedData) {
         commit('setAgents', cachedData);
         commit('setError', false);

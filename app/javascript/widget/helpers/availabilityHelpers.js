@@ -335,6 +335,6 @@ export const isOnline = (
     return hasOnlineAgents;
   }
 
-  const inWorkingHours = isInWorkingHours(time, utcOffset, workingHours);
-  return inWorkingHours && hasOnlineAgents;
+  // EVIRMA: Keep availability online throughout the schedule, even without online agents.
+  return isInWorkingHours(time, utcOffset, workingHours);
 };

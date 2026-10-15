@@ -25,6 +25,9 @@ import { useAvailability } from 'widget/composables/useAvailability';
 import { SDK_SET_BUBBLE_VISIBILITY } from '../shared/constants/sharedFrameEvents';
 import { emitter } from 'shared/helpers/mitt';
 
+// EVIRMA: Refresh availability without relying on presence websocket events.
+const AGENT_AVAILABILITY_REFRESH_INTERVAL = 60 * 1000;
+
 export default {
   name: 'App',
   components: {
@@ -63,6 +66,8 @@ export default {
     return {
       isMobile: false,
       campaignsSnoozedTill: undefined,
+      // EVIRMA: Retain the polling handle so the timer can be cleared on teardown.
+      agentAvailabilityRefreshInterval: null,
     };
   },
   computed: {
@@ -114,6 +119,11 @@ export default {
   },
   mounted() {
     const { websiteToken, locale, widgetColor } = window.chatwootWebChannel;
+    // EVIRMA: Keep the host's availability status current without websocket updates.
+    this.agentAvailabilityRefreshInterval = setInterval(
+      () => this.fetchAvailableAgents(websiteToken),
+      AGENT_AVAILABILITY_REFRESH_INTERVAL
+    );
     this.setLocale(locale);
     this.setWidgetColor(widgetColor);
     this.setWidgetColorVariable(widgetColor);
@@ -133,6 +143,10 @@ export default {
     this.$store.dispatch('conversationAttributes/getAttributes');
     this.registerUnreadEvents();
     this.registerCampaignEvents();
+  },
+  unmounted() {
+    // EVIRMA: Stop polling after the widget is removed.
+    clearInterval(this.agentAvailabilityRefreshInterval);
   },
   methods: {
     ...mapActions('appConfig', [
