@@ -37,7 +37,11 @@ onMounted(() => {
 
 <!-- eslint-disable-next-line vue/no-root-v-if -->
 <template>
-  <div v-if="evirmaApp" class="h-[28rem] shrink-0 border-b border-n-weak">
+  <div
+    v-if="evirmaApp"
+    class="h-[calc(100vh-4rem)] min-h-[56.25rem] shrink-0 border-b border-n-weak"
+  >
+    <!-- EVIRMA: use the viewport height with a 900px minimum for the embedded app. -->
     <Frame
       :key="currentChat.id"
       :config="evirmaApp.content"

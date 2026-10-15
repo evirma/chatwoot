@@ -60,9 +60,10 @@ const closeContactPanel = () => {
       },
     ]"
   >
-    <!-- EVIRMA: keep the app outside the scrolling contact panel. -->
-    <EvirmaPanel :current-chat="currentChat" />
-    <div class="flex flex-1 overflow-auto">
+    <!-- EVIRMA: share one scroll area so the tall app does not hide the contact. -->
+    <div class="flex flex-col flex-1 min-h-0 overflow-auto">
+      <!-- EVIRMA: always expanded, outside the contact's saved accordion state. -->
+      <EvirmaPanel :current-chat="currentChat" />
       <ContactPanel
         v-show="activeTab === 0"
         :conversation-id="currentChat.id"
