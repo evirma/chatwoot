@@ -27,6 +27,9 @@ describe('#actions', () => {
       ]);
       expect(commit.mock.calls).toEqual([]);
       expect(dispatch.mock.calls).toEqual([
+        // EVIRMA: Identification resets previous history before fetching with the new token.
+        ['contactHistory/reset', null, { root: true }],
+        ['contactHistory/fetch', null, { root: true }],
         ['get'],
         ['conversation/clearConversations', {}, { root: true }],
         ['conversation/fetchOldConversations', {}, { root: true }],
@@ -46,6 +49,9 @@ describe('#actions', () => {
       expect(sendMessage.mock.calls).toEqual([]);
       expect(commit.mock.calls).toEqual([]);
       expect(dispatch.mock.calls).toEqual([
+        // EVIRMA: History refresh also follows identification with an existing token.
+        ['contactHistory/reset', null, { root: true }],
+        ['contactHistory/fetch', null, { root: true }],
         ['get'],
         ['conversation/clearConversations', {}, { root: true }],
         ['conversation/fetchOldConversations', {}, { root: true }],
@@ -63,7 +69,12 @@ describe('#actions', () => {
       await actions.setUser({ commit, dispatch }, { identifier: 1, user });
       expect(sendMessage.mock.calls).toEqual([]);
       expect(commit.mock.calls).toEqual([]);
-      expect(dispatch.mock.calls).toEqual([['get']]);
+      // EVIRMA: An unchanged contact token can still gain an identifier and history access.
+      expect(dispatch.mock.calls).toEqual([
+        ['contactHistory/reset', null, { root: true }],
+        ['contactHistory/fetch', null, { root: true }],
+        ['get'],
+      ]);
     });
   });
 

@@ -494,6 +494,8 @@ Rails.application.routes.draw do
       resource :notification_subscriptions, only: [:create, :destroy]
 
       namespace :widget do
+        # EVIRMA: Authenticated contact history from the account's other inboxes.
+        resources :contact_history, only: [:index], controller: 'contact_history'
         resource :direct_uploads, only: [:create]
         resource :config, only: [:create]
         resources :campaigns, only: [:index]

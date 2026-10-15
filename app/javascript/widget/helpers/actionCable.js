@@ -5,8 +5,12 @@ import { IFrameHelper } from 'widget/helpers/utils';
 import { shouldTriggerMessageUpdateEvent } from './IframeEventHelper';
 import { CHATWOOT_ON_MESSAGE } from '../constants/sdkEvents';
 import { emitter } from '../../shared/helpers/mitt';
+// EVIRMA: Preserve the native numeric message type in notifications sent to the embedding page.
+import { MESSAGE_TYPE } from 'shared/constants/messages';
 
 const isMessageInActiveConversation = (getters, message) => {
+  // EVIRMA: Native HMAC fan-out can include other inboxes, even before a conversation exists.
+  if (message.inbox_id !== window.chatwootWebChannel.inboxId) return true;
   const { conversation_id: conversationId } = message;
   const activeConversationId =
     getters['conversationAttributes/getConversationParams'].id;
@@ -20,6 +24,8 @@ class ActionCableConnector extends BaseActionCableConnector {
     super(app, pubsubToken, '', WIDGET_PRESENCE_INTERVAL);
     this.events = {
       'message.created': this.onMessageCreated,
+      // EVIRMA: A separate event never enters the active conversation's message list.
+      'contact.history_message.created': this.onContactHistoryMessageCreated,
       'message.updated': this.onMessageUpdated,
       'conversation.typing_on': this.onTypingOn,
       'conversation.typing_off': this.onTypingOff,
@@ -36,6 +42,8 @@ class ActionCableConnector extends BaseActionCableConnector {
 
   onReconnect = () => {
     this.syncLatestMessages();
+    // EVIRMA: Recover cross-channel messages missed during a disconnect.
+    this.app.$store.dispatch('contactHistory/fetch');
     // Re-fetch conversation attributes so a status change (e.g. auto-resolve)
     // that happened while disconnected is reflected, keeping the reply box state correct.
     this.app.$store.dispatch('conversationAttributes/getAttributes');
@@ -73,6 +81,18 @@ class ActionCableConnector extends BaseActionCableConnector {
     if (data.sender_type === 'User') {
       playNewMessageNotificationInWidget();
     }
+  };
+
+  // EVIRMA: Notify the embedding page about operator replies using the native SDK event.
+  onContactHistoryMessageCreated = data => {
+    this.app.$store.dispatch('contactHistory/addMessage', data);
+    if (data.message_type !== 'outgoing') return;
+
+    IFrameHelper.sendMessage({
+      event: 'onEvent',
+      eventIdentifier: CHATWOOT_ON_MESSAGE,
+      data: { ...data, message_type: MESSAGE_TYPE.OUTGOING },
+    });
   };
 
   onMessageUpdated = data => {

@@ -3,6 +3,8 @@ import ChatMessage from 'widget/components/ChatMessage.vue';
 import AgentTypingBubble from 'widget/components/AgentTypingBubble.vue';
 import DateSeparator from 'shared/components/DateSeparator.vue';
 import Spinner from 'shared/components/Spinner.vue';
+// EVIRMA: Cross-channel history precedes the current conversation's messages.
+import EvirmaContactHistory from 'widget/components/EvirmaContactHistory.vue';
 import { useDarkMode } from 'widget/composables/useDarkMode';
 import { MESSAGE_TYPE } from 'shared/constants/messages';
 import { mapActions, mapGetters } from 'vuex';
@@ -14,6 +16,8 @@ export default {
     AgentTypingBubble,
     DateSeparator,
     Spinner,
+    // EVIRMA: Read-only history from other channels.
+    EvirmaContactHistory,
   },
   props: {
     groupedMessages: {
@@ -101,6 +105,8 @@ export default {
 <template>
   <div class="conversation--container" :class="colorSchemeClass">
     <div class="conversation-wrap" :class="{ 'is-typing': isAgentTyping }">
+      <!-- EVIRMA: Do not mix historical messages into the current conversation. -->
+      <EvirmaContactHistory />
       <div v-if="isFetchingList" class="message--loader">
         <Spinner />
       </div>
