@@ -62,6 +62,8 @@ const runSDK = ({ baseUrl, websiteToken }) => {
     hideMessageBubble: chatwootSettings.hideMessageBubble || false,
     // EVIRMA: Allow the host page to hide both widget headers.
     hideHeader: chatwootSettings.hideHeader === true,
+    // EVIRMA: Open the conversation directly when embedded by the host.
+    skipHome: chatwootSettings.skipHome === true,
     isOpen: false,
     position: chatwootSettings.position === 'left' ? 'left' : 'right',
     websiteToken,

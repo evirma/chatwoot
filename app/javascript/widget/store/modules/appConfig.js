@@ -11,6 +11,8 @@ import {
 const state = {
   // EVIRMA: Keep upstream header visibility unless explicitly disabled.
   hideHeader: false,
+  // EVIRMA: Preserve the home screen unless the host opts out.
+  skipHome: false,
   hideMessageBubble: false,
   isCampaignViewClicked: false,
   showUnreadMessagesDialog: true,
@@ -61,6 +63,8 @@ export const actions = {
       hideMessageBubble,
       // EVIRMA: Header visibility from the host's config-set message.
       hideHeader = false,
+      // EVIRMA: Home-screen preference from config-set.
+      skipHome = false,
       showUnreadMessagesDialog,
       widgetStyle = 'rounded',
       darkMode = 'light',
@@ -76,6 +80,8 @@ export const actions = {
     commit(SET_WIDGET_APP_CONFIG, {
       // EVIRMA: Only the boolean setting enables header hiding.
       hideHeader: hideHeader === true,
+      // EVIRMA: Only a boolean true skips home.
+      skipHome: skipHome === true,
       hideMessageBubble: !!hideMessageBubble,
       position: position || 'right',
       showPopoutButton: !!showPopoutButton,
@@ -119,6 +125,8 @@ export const mutations = {
   [SET_WIDGET_APP_CONFIG]($state, data) {
     // EVIRMA: Retain header visibility in the shared widget configuration.
     $state.hideHeader = data.hideHeader;
+    // EVIRMA: Share the home-screen preference with widget views.
+    $state.skipHome = data.skipHome;
     $state.showPopoutButton = data.showPopoutButton;
     $state.position = data.position;
     $state.hideMessageBubble = data.hideMessageBubble;

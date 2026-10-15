@@ -77,3 +77,23 @@ describe('$chatwoot.hideHeader', () => {
     expect(window.$chatwoot.hideHeader).toBe(hideHeader === true);
   });
 });
+
+// EVIRMA: Keep the home screen opt-out disabled unless explicitly enabled.
+describe('$chatwoot.skipHome', () => {
+  afterEach(() => {
+    delete window.$chatwoot;
+    delete window.chatwootSettings;
+  });
+
+  it.each([undefined, false, true])('reads skipHome=%s', skipHome => {
+    delete window.$chatwoot;
+    window.chatwootSettings = { skipHome };
+
+    window.chatwootSDK.run({
+      baseUrl: 'https://app.chatwoot.com',
+      websiteToken: 'website-token',
+    });
+
+    expect(window.$chatwoot.skipHome).toBe(skipHome === true);
+  });
+});

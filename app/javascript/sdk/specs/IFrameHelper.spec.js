@@ -39,6 +39,22 @@ describe('IFrameHelper EVIRMA messages', () => {
     expect(message).toMatchObject({ event: 'config-set', hideHeader });
   });
 
+  // EVIRMA: Pass the host's home-screen preference to the iframe.
+  it.each([false, true])('sends skipHome=%s in config-set', skipHome => {
+    window.$chatwoot.skipHome = skipHome;
+    vi.spyOn(IFrameHelper, 'onLoad').mockImplementation(() => {});
+    vi.spyOn(IFrameHelper, 'toggleCloseButton').mockImplementation(() => {});
+
+    IFrameHelper.events.loaded({
+      config: { authToken: 'token', channelConfig: { widgetColor: '#000000' } },
+    });
+
+    const message = JSON.parse(
+      postMessage.mock.calls[0][0].replace('chatwoot-widget:', '')
+    );
+    expect(message).toMatchObject({ event: 'config-set', skipHome });
+  });
+
   // EVIRMA: Forward the widget event using the SDK's window event convention.
   it.each([false, true])(
     'dispatches availability isOnline=%s to the host',
