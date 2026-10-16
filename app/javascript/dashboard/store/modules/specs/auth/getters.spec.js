@@ -89,6 +89,30 @@ describe('#getters', () => {
     });
   });
 
+  // EVIRMA: A saved preference must never hide the conversation sidebar.
+  it.each([false, undefined])(
+    'keeps the contact sidebar open with saved value %s',
+    savedValue => {
+      const uiSettings = {
+        is_contact_sidebar_open: savedValue,
+        icon_type: 'emoji',
+      };
+      expect(
+        getters.getUISettings({ currentUser: { ui_settings: uiSettings } })
+      ).toEqual({
+        is_contact_sidebar_open: true,
+        icon_type: 'emoji',
+      });
+      expect(uiSettings.is_contact_sidebar_open).toBe(savedValue);
+    }
+  );
+
+  it('keeps the contact sidebar open without saved UI settings', () => {
+    expect(getters.getUISettings({ currentUser: {} })).toEqual({
+      is_contact_sidebar_open: true,
+    });
+  });
+
   describe('#getMessageSignature', () => {
     it('Return signature when signature is present', () => {
       expect(

@@ -155,8 +155,10 @@ export default {
       @blur="onBlur"
     />
     <div class="relative flex items-center ltr:pl-2 rtl:pr-2">
+      <!-- EVIRMA: Keep paste and drop handling alive while typing a message. -->
       <ChatAttachmentButton
-        v-if="showAttachment"
+        v-if="canHandleAttachments"
+        v-show="showAttachment"
         class="text-n-slate-12"
         :on-attach="onSendAttachment"
       />

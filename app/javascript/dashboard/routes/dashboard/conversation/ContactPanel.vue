@@ -21,7 +21,6 @@ import SharedFiles from './SharedFiles.vue';
 import Draggable from 'vuedraggable';
 import MacrosList from './Macros/List.vue';
 import ShopifyOrdersList from 'dashboard/components/widgets/conversation/ShopifyOrdersList.vue';
-import SidebarActionsHeader from 'dashboard/components-next/SidebarActionsHeader.vue';
 import LinearIssuesList from 'dashboard/components/widgets/conversation/linear/IssuesList.vue';
 import LinearSetupCTA from 'dashboard/components/widgets/conversation/linear/LinearSetupCTA.vue';
 
@@ -124,13 +123,6 @@ const onDragEnd = () => {
   });
 };
 
-const closeContactPanel = () => {
-  updateUISettings({
-    is_contact_sidebar_open: false,
-    is_copilot_panel_open: false,
-  });
-};
-
 onMounted(() => {
   conversationSidebarItems.value = conversationSidebarItemsOrder.value;
   getContactDetails();
@@ -142,10 +134,12 @@ onMounted(() => {
 
 <template>
   <div class="w-full">
-    <SidebarActionsHeader
-      :title="$t('CONVERSATION.SIDEBAR.CONTACT')"
-      @close="closeContactPanel"
-    />
+    <!-- EVIRMA: The persistent conversation sidebar cannot be dismissed. -->
+    <div class="flex items-center px-4 py-2 border-b border-n-weak h-12">
+      <span class="font-medium text-sm text-n-slate-12">
+        {{ $t('CONVERSATION.SIDEBAR.CONTACT') }}
+      </span>
+    </div>
     <ContactInfo :contact="contact" :channel-type="channelType" />
     <div class="px-2 pb-8 list-group">
       <Draggable
