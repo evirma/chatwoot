@@ -39,15 +39,15 @@ const isReel = computed(() => {
       >
         <Icon icon="i-lucide-instagram" class="text-white shadow-lg" />
       </div>
+      <!-- EVIRMA: Play videos in the gallery, just like image attachments. -->
       <video
-        controls
         class="rounded-lg skip-context-menu"
         :src="attachment.dataUrl"
         :class="{
           'max-w-48': isReel,
           'max-w-full': !isReel,
         }"
-        @click.stop
+        @click.stop.prevent="showGallery = true"
         @error="handleError"
       />
     </div>
@@ -57,7 +57,7 @@ const isReel = computed(() => {
     v-model:show="showGallery"
     :attachment="useSnakeCase(attachment)"
     :all-attachments="filteredCurrentChatAttachments"
-    @error="onError"
+    auto-play
     @close="() => (showGallery = false)"
   />
 </template>

@@ -1,4 +1,5 @@
 <script>
+import { inject, ref } from 'vue';
 import FileUpload from 'vue-upload-component';
 import Spinner from 'shared/components/Spinner.vue';
 import {
@@ -23,7 +24,10 @@ export default {
   },
   setup() {
     const { canHandleAttachments } = useAttachments();
-    return { canHandleAttachments };
+    // EVIRMA: Reuse FileUpload for drops over both the timeline and the input.
+    const attachmentDropTarget = inject('evirmaAttachmentDropTarget', null);
+    const upload = ref(null);
+    return { canHandleAttachments, attachmentDropTarget, upload };
   },
   data() {
     return { isUploading: false };
@@ -48,6 +52,22 @@ export default {
     document.removeEventListener('paste', this.handleClipboardPaste);
   },
   methods: {
+    // EVIRMA: Apply the paperclip's accepted types to drops and clipboard files too.
+    filterFile(newFile, oldFile, prevent) {
+      if (!newFile || oldFile) return;
+      const allowed = this.allowedFileTypes.split(',').some(value => {
+        const type = value.trim();
+        if (!type) return false;
+        if (type.startsWith('.')) {
+          return newFile.name.toLowerCase().endsWith(type);
+        }
+        if (type.endsWith('/*')) {
+          return newFile.type.startsWith(type.slice(0, -1));
+        }
+        return newFile.type === type;
+      });
+      if (!allowed) prevent();
+    },
     handleClipboardPaste(e) {
       // If file picker is not enabled, do not allow paste
       if (!this.canHandleAttachments) return;
@@ -151,17 +171,32 @@ export default {
 <template>
   <FileUpload
     ref="upload"
-    :size="4096 * 2048"
+    multiple
+    :drop="canHandleAttachments ? attachmentDropTarget : false"
+    :size="fileUploadSizeLimit * 1024 * 1024"
     :accept="allowedFileTypes"
     :data="{
       direct_upload_url: '/api/v1/widget/direct_uploads',
       direct_upload: true,
     }"
+    @input-filter="filterFile"
     @input-file="onFileUpload"
   >
     <button class="min-h-8 min-w-8 flex items-center justify-center">
       <FluentIcon v-if="!isUploading.image" icon="attach" />
       <Spinner v-if="isUploading" size="small" />
     </button>
+    <!-- EVIRMA: The native uploader owns drag state and removes its listeners on unmount. -->
+    <Teleport
+      v-if="attachmentDropTarget && upload?.dropElementActive"
+      :to="attachmentDropTarget"
+    >
+      <div
+        role="status"
+        class="absolute inset-0 z-[60] flex items-center justify-center border-2 border-dashed border-n-brand bg-n-background/90 text-n-slate-12 pointer-events-none"
+      >
+        {{ $t('EVIRMA_DROP_TO_SEND') }}
+      </div>
+    </Teleport>
   </FileUpload>
 </template>

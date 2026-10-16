@@ -107,7 +107,15 @@ describe('EvirmaPanel', () => {
     expect(getApps).not.toHaveBeenCalled();
   });
 
-  it.each([{}, { is_conv_details_open: false, is_conv_actions_open: false }])(
+  // EVIRMA: Ignore the saved contact-column preference as well as accordion state.
+  it.each([
+    {},
+    {
+      is_contact_sidebar_open: false,
+      is_conv_details_open: false,
+      is_conv_actions_open: false,
+    },
+  ])(
     'keeps the sidebar frame open without a toggle with saved settings %j',
     async savedSettings => {
       store.state.records = [evirmaApp];
