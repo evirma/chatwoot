@@ -21,10 +21,35 @@ RSpec.describe '/api/v1/widget/contact_history', type: :request do
     expect(response).to have_http_status(:ok)
     history = response.parsed_body['payload']
     expect(history.pluck('id')).to eq([message.id, incoming.id])
-    expect(history.first).to include('id' => message.id, 'message_type' => 'outgoing', 'created_at' => message.created_at.to_i)
+    expect(history.first).to include('id' => message.id, 'message_type' => 'outgoing', 'created_at' => message.created_at.to_i,
+                                    'channel_type' => 'Channel::Api')
     expect(history.first['attachments']).to eq(message.attachments.map(&:push_event_data).as_json)
-    expect(history.first['sender']).to include('name' => message.sender.name, 'avatar_url' => message.sender.avatar_url)
+    expect(history.first['sender']).to include('name' => message.sender.name, 'avatar_url' => message.sender.avatar_url, 'type' => 'user')
+    expect(history.last['sender']).to include('name' => contact.name, 'type' => 'contact')
     expect(history.first['channel']).to include('name' => other_inbox.name, 'channel_type' => 'Channel::Api', 'label' => 'max')
+  end
+
+  # EVIRMA: Hide bot identities without losing the source account/channel avatar.
+  it 'presents bot replies as Evirma with the bot avatar' do
+    bot = create(:agent_bot, :with_avatar, account: account, name: 'Internal Telegram bot')
+    message.update!(sender: bot)
+
+    get '/api/v1/widget/contact_history', params: { website_token: web_widget.website_token }, headers: { 'X-Auth-Token' => token }
+
+    expect(response.parsed_body['payload'].first['sender']).to include(
+      'name' => 'Evirma', 'available_name' => 'Evirma', 'avatar_url' => bot.avatar_url, 'type' => 'agent_bot'
+    )
+  end
+
+  it 'presents replies without a sender as Evirma with the inbox avatar' do
+    other_inbox.avatar.attach(fixture_file_upload(Rails.root.join('spec/assets/avatar.png'), 'image/png'))
+    message.update!(sender: nil)
+
+    get '/api/v1/widget/contact_history', params: { website_token: web_widget.website_token }, headers: { 'X-Auth-Token' => token }
+
+    expect(response.parsed_body['payload'].first['sender']).to include(
+      'name' => 'Evirma', 'available_name' => 'Evirma', 'avatar_url' => other_inbox.avatar_url, 'type' => 'agent_bot'
+    )
   end
 
   it 'never returns another contact history, even if a contact id is supplied' do
@@ -49,7 +74,9 @@ RSpec.describe '/api/v1/widget/contact_history', type: :request do
   end
 
   it 'excludes private notes, activities and templates' do
-    create(:message, account: account, conversation: conversation, private: true, content: 'Internal note')
+    # EVIRMA: Telegram service commands must never appear in cross-channel history.
+    create(:message, account: account, conversation: conversation, private: true, content: '/start secret-token')
+    create(:message, account: account, conversation: conversation, private: true, content: '/start')
     create(:message, account: account, conversation: conversation, message_type: :activity)
     create(:message, account: account, conversation: conversation, message_type: :template)
 

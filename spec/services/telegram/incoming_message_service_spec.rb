@@ -48,6 +48,33 @@ describe Telegram::IncomingMessageService do
   end
 
   describe '#perform' do
+    # EVIRMA: Preserve the token webhook while keeping service commands private.
+    ['/start', '/start secret-token'].each do |command|
+      it "keeps #{command.inspect} private and delivers its original content to the account webhook" do
+        webhook = create(:webhook, account: telegram_channel.account, inbox: telegram_channel.inbox, subscriptions: ['message_created'])
+        params = {
+          'message' => message_params.merge('text' => command)
+        }.with_indifferent_access
+
+        described_class.new(inbox: telegram_channel.inbox, params: params).perform
+
+        message = telegram_channel.inbox.messages.last
+        expect(message).to be_private
+        expect(message).to be_incoming
+        expect(message.content).to eq(command)
+        expect(message.sender).to eq(contact_for)
+        expect(message.webhook_sendable?).to be(true)
+        event = Events::Base.new(:'message.created', Time.zone.now, message: message)
+        expect(WebhookJob).to receive(:perform_later).with(
+          webhook.url,
+          hash_including(event: 'message_created', content: command, private: true,
+                         inbox: hash_including(id: telegram_channel.inbox.id), sender: hash_including(id: contact_for.id)),
+          :account_webhook, secret: webhook.secret, delivery_id: instance_of(String)
+        )
+        WebhookListener.instance.message_created(event)
+      end
+    end
+
     context 'when valid text message params' do
       it 'creates appropriate conversations, message and contacts' do
         params = {
@@ -58,6 +85,7 @@ describe Telegram::IncomingMessageService do
         expect(telegram_channel.inbox.conversations.count).not_to eq(0)
         expect(contact_for.name).to eq('Sojan Jose')
         expect(telegram_channel.inbox.messages.first.content).to eq('test')
+        expect(telegram_channel.inbox.messages.first).not_to be_private
       end
     end
 

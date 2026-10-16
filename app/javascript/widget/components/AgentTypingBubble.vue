@@ -9,8 +9,9 @@ export default {
     <div class="agent-message">
       <div class="avatar-wrap" />
       <div class="message-wrap mt-2">
+        <!-- EVIRMA: Match the higher-contrast agent message bubbles. -->
         <div
-          class="chat-bubble agent typing-bubble bg-n-background dark:bg-n-solid-3"
+          class="chat-bubble agent typing-bubble bg-n-slate-4 dark:bg-n-slate-6"
         >
           <img
             src="assets/images/typing.gif"

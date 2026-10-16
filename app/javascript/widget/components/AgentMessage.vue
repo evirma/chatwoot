@@ -1,8 +1,14 @@
+<script setup>
+// EVIRMA: Attachment timestamps follow the widget locale, including 24-hour clocks.
+import { useWidgetDate } from 'widget/composables/useWidgetDate';
+
+const { formatDateTime } = useWidgetDate();
+</script>
+
 <script>
 import UserMessage from 'widget/components/UserMessage.vue';
 import AgentMessageBubble from 'widget/components/AgentMessageBubble.vue';
 import MessageReplyButton from 'widget/components/MessageReplyButton.vue';
-import { messageStamp } from 'shared/helpers/timeHelper';
 import ImageBubble from 'widget/components/ImageBubble.vue';
 import VideoBubble from 'widget/components/VideoBubble.vue';
 import FileBubble from 'widget/components/FileBubble.vue';
@@ -29,6 +35,8 @@ export default {
   },
   mixins: [configMixin, messageMixin],
   props: {
+    // EVIRMA: Reuse native rendering without active-conversation reply controls.
+    readOnly: { type: Boolean, default: false },
     message: {
       type: Object,
       default: () => {},
@@ -54,10 +62,6 @@ export default {
         return false;
       }
       return this.message.content;
-    },
-    readableTime() {
-      const { created_at: createdAt = '' } = this.message;
-      return messageStamp(createdAt, 'LLL d yyyy, h:mm a');
     },
     messageType() {
       const { message_type: type = 1 } = this.message;
@@ -204,9 +208,10 @@ export default {
               :message-type="messageType"
               :message="message.content"
             />
+            <!-- EVIRMA: Increase agent bubble contrast in both widget themes. -->
             <div
               v-if="hasAttachments"
-              class="space-y-2 chat-bubble has-attachment agent bg-n-background dark:bg-n-solid-3"
+              class="space-y-2 chat-bubble has-attachment agent bg-n-slate-4 dark:bg-n-slate-6"
               :class="wrapClass"
             >
               <div
@@ -217,14 +222,14 @@ export default {
                   v-if="attachment.file_type === 'image' && !hasImageError"
                   :url="attachment.data_url"
                   :thumb="attachment.data_url"
-                  :readable-time="readableTime"
+                  :readable-time="formatDateTime(message.created_at)"
                   @error="onImageLoadError"
                 />
 
                 <VideoBubble
                   v-if="attachment.file_type === 'video' && !hasVideoError"
                   :url="attachment.data_url"
-                  :readable-time="readableTime"
+                  :readable-time="formatDateTime(message.created_at)"
                   @error="onVideoLoadError"
                 />
 
@@ -241,11 +246,14 @@ export default {
           </div>
           <div class="flex flex-col justify-end">
             <MessageReplyButton
+              v-if="!readOnly"
               class="transition-opacity delay-75 opacity-0 group-hover:opacity-100 sm:opacity-0"
               @click="toggleReply"
             />
           </div>
         </div>
+        <!-- EVIRMA: Optional history metadata follows the native bubble. -->
+        <slot name="metadata" />
         <p
           v-if="message.showAvatar || hasRecordedResponse"
           class="agent-name text-n-slate-11"

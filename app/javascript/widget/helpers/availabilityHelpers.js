@@ -45,6 +45,7 @@ const toMinutes = (hours = 0, minutes = 0) => hours * MINUTES_IN_HOUR + minutes;
  * @param {Date|string} time
  * @param {string} utcOffset
  * @param {Array} workingHours
+ * @param {boolean} useUserTimezone - Convert the opening time for user-facing text.
  * @returns {Object|null}
  */
 const getTodayConfig = (time, utcOffset, workingHours) => {
@@ -260,16 +261,18 @@ export const isInWorkingHours = (time, utcOffset, workingHours = []) => {
 
 /**
  * Find next available slot with detailed information
- * Returns times adjusted to user's timezone for display
+ * Returns times adjusted to user's timezone for display (or the inbox clock for parent events).
  * @param {Date|string} time
  * @param {string} utcOffset
  * @param {Array} workingHours
+ * @param {boolean} useUserTimezone - Convert the opening time for user-facing text.
  * @returns {Object|null}
  */
 export const findNextAvailableSlotDetails = (
   time,
   utcOffset,
-  workingHours = []
+  workingHours = [],
+  useUserTimezone = true
 ) => {
   const date = getDateInTimezone(time, utcOffset);
   const currentDay = date.getDay();
@@ -291,8 +294,10 @@ export const findNextAvailableSlotDetails = (
   const slotDetails =
     todaySlot || findNextSlot(currentDay, currentMinutes, openDays);
 
-  // Convert to user timezone for display
-  return convertSlotToUserTimezone(time, utcOffset, slotDetails);
+  // EVIRMA: Parent events need the inbox clock; visible availability text keeps the user clock.
+  return useUserTimezone
+    ? convertSlotToUserTimezone(time, utcOffset, slotDetails)
+    : slotDetails;
 };
 
 /**
