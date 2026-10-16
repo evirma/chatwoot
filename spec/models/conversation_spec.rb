@@ -755,10 +755,11 @@ RSpec.describe Conversation do
     context 'with campaigns' do
       let(:user) { create(:user, account: bot_inbox.inbox.account) }
 
-      it 'returns conversation as open if campaign has a sender' do
+      # EVIRMA: ongoing campaigns wait even when their message has a human sender.
+      it 'returns conversation as pending if campaign has a sender' do
         campaign = create(:campaign, inbox: bot_inbox.inbox, account: bot_inbox.inbox.account, sender: user)
         conversation = create(:conversation, inbox: bot_inbox.inbox, campaign: campaign)
-        expect(conversation.status).to eq('open')
+        expect(conversation.status).to eq('pending')
         expect(conversation.ai_assignee).to be_nil
       end
 
@@ -775,15 +776,25 @@ RSpec.describe Conversation do
       let(:inbox) { create(:inbox, account: account) }
       let(:user) { create(:user, account: account) }
 
-      it 'returns conversation as open if campaign has no sender but no bot is active' do
+      # EVIRMA: pending is also used for campaigns without an active bot.
+      it 'returns conversation as pending if campaign has no sender but no bot is active' do
         campaign = create(:campaign, inbox: inbox, account: account, sender: nil)
         conversation = create(:conversation, inbox: inbox, campaign: campaign)
-        expect(conversation.status).to eq('open')
+        expect(conversation.status).to eq('pending')
       end
 
-      it 'returns conversation as open if campaign has a sender' do
+      it 'returns conversation as pending if campaign has a sender' do
         campaign = create(:campaign, inbox: inbox, account: account, sender: user)
         conversation = create(:conversation, inbox: inbox, campaign: campaign)
+        expect(conversation.status).to eq('pending')
+      end
+
+      it 'keeps one-off campaign conversations open' do
+        sms_inbox = create(:inbox, account: account, channel: create(:channel_sms, account: account))
+        campaign = create(:campaign, inbox: sms_inbox, account: account, sender: user)
+        conversation = create(:conversation, inbox: sms_inbox, account: account, campaign: campaign)
+
+        expect(campaign).to be_one_off
         expect(conversation.status).to eq('open')
       end
     end
