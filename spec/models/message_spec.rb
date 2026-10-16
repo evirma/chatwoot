@@ -239,6 +239,7 @@ RSpec.describe Message do
   describe '#reopen_conversation' do
     let(:conversation) { create(:conversation) }
     let(:message) { build(:message, message_type: :incoming, conversation: conversation) }
+    let(:private_message) { build(:message, message_type: :incoming, conversation: conversation, private: true) }
 
     it 'reopens resolved conversation when the message is from a contact' do
       conversation.resolved!
@@ -250,6 +251,47 @@ RSpec.describe Message do
       conversation.snoozed!
       message.save!
       expect(message.conversation.open?).to be true
+    end
+
+    # EVIRMA: any non-private incoming message opens pending conversations, with or without a campaign.
+    it 'opens a pending campaign conversation when a contact replies' do
+      campaign = create(:campaign, account: conversation.account, inbox: conversation.inbox)
+      conversation.update!(campaign: campaign, status: :pending)
+
+      expect(conversation.reload).to be_pending
+
+      message.save!
+
+      expect(conversation.reload).to be_open
+    end
+
+    it 'opens a pending conversation without a campaign when a contact replies' do
+      conversation.pending!
+      message.save!
+
+      expect(conversation.reload).to be_open
+    end
+
+    # EVIRMA: private incoming messages, such as the hidden Telegram /start, are not contact replies.
+    it 'keeps a pending conversation pending for a private incoming message' do
+      conversation.pending!
+      private_message.save!
+
+      expect(conversation.reload).to be_pending
+    end
+
+    it 'keeps a snoozed conversation snoozed for a private incoming message' do
+      conversation.snoozed!
+      private_message.save!
+
+      expect(conversation.reload).to be_snoozed
+    end
+
+    it 'keeps a resolved conversation resolved for a private incoming message' do
+      conversation.resolved!
+      private_message.save!
+
+      expect(conversation.reload).to be_resolved
     end
 
     it 'will not reopen if the conversation is muted' do

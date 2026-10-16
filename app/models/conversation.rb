@@ -313,6 +313,8 @@ class Conversation < ApplicationRecord
   end
 
   def handle_campaign_status
+    # EVIRMA: ongoing campaigns wait for a contact reply before entering the agent queue.
+    self.status = :pending if campaign.ongoing?
     set_active_bot_conversation if campaign.sender_id.nil? && inbox.active_bot?
   end
 

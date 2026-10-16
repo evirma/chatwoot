@@ -404,8 +404,13 @@ class Message < ApplicationRecord
   def reopen_conversation
     return if conversation.muted?
     return unless incoming?
+    # EVIRMA: private incoming messages (the hidden Telegram /start) are not contact replies.
+    return if private?
 
     conversation.open! if conversation.snoozed?
+
+    # EVIRMA: any contact reply opens a waiting conversation (including ongoing campaigns) and triggers assignment.
+    conversation.open! if conversation.pending?
 
     reopen_resolved_conversation if conversation.resolved?
   end
