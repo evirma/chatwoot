@@ -1,3 +1,10 @@
+<script setup>
+// EVIRMA: Use the widget's locale for customer attachment timestamps.
+import { useWidgetDate } from 'widget/composables/useWidgetDate';
+
+const { formatTime } = useWidgetDate();
+</script>
+
 <script>
 import UserMessageBubble from 'widget/components/UserMessageBubble.vue';
 import MessageReplyButton from 'widget/components/MessageReplyButton.vue';
@@ -5,7 +12,6 @@ import ImageBubble from 'widget/components/ImageBubble.vue';
 import VideoBubble from 'widget/components/VideoBubble.vue';
 import FluentIcon from 'shared/components/FluentIcon/Index.vue';
 import FileBubble from 'widget/components/FileBubble.vue';
-import { messageStamp } from 'shared/helpers/timeHelper';
 import messageMixin from '../mixins/messageMixin';
 import ReplyToChip from 'widget/components/ReplyToChip.vue';
 import DragWrapper from 'widget/components/DragWrapper.vue';
@@ -27,6 +33,8 @@ export default {
   },
   mixins: [messageMixin],
   props: {
+    // EVIRMA: Reuse native rendering without active-conversation reply controls.
+    readOnly: { type: Boolean, default: false },
     message: {
       type: Object,
       default: () => {},
@@ -54,10 +62,6 @@ export default {
     showTextBubble() {
       const { message } = this;
       return !!message.content;
-    },
-    readableTime() {
-      const { created_at: createdAt = '' } = this.message;
-      return messageStamp(createdAt);
     },
     isFailed() {
       const { status = '' } = this.message;
@@ -115,12 +119,16 @@ export default {
         <div class="flex justify-end gap-1">
           <div class="flex flex-col justify-end">
             <MessageReplyButton
-              v-if="!isInProgress && !isFailed"
+              v-if="!readOnly && !isInProgress && !isFailed"
               class="transition-opacity delay-75 opacity-0 group-hover:opacity-100 sm:opacity-0"
               @click="toggleReply"
             />
           </div>
-          <DragWrapper direction="left" @dragged="toggleReply">
+          <DragWrapper
+            direction="left"
+            :disabled="readOnly"
+            @dragged="toggleReply"
+          >
             <UserMessageBubble
               v-if="showTextBubble"
               :message="message.content"
@@ -140,14 +148,14 @@ export default {
                   v-if="attachment.file_type === 'image' && !hasImageError"
                   :url="attachment.data_url"
                   :thumb="attachment.data_url"
-                  :readable-time="readableTime"
+                  :readable-time="formatTime(message.created_at)"
                   @error="onImageLoadError"
                 />
 
                 <VideoBubble
                   v-if="attachment.file_type === 'video' && !hasVideoError"
                   :url="attachment.data_url"
-                  :readable-time="readableTime"
+                  :readable-time="formatTime(message.created_at)"
                   @error="onVideoLoadError"
                 />
 
@@ -161,6 +169,10 @@ export default {
               </div>
             </div>
           </DragWrapper>
+        </div>
+        <!-- EVIRMA: Align optional channel/time metadata with the customer bubble. -->
+        <div v-if="$slots.metadata" class="flex justify-end">
+          <slot name="metadata" />
         </div>
         <div
           v-if="isFailed"

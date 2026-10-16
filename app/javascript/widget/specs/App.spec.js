@@ -102,7 +102,7 @@ describe('App availability-changed', () => {
       await nextTick();
 
       expect(postMessage).toHaveBeenCalledExactlyOnceWith(
-        `chatwoot-widget:${JSON.stringify({ event: 'availability-changed', isOnline })}`,
+        `chatwoot-widget:${JSON.stringify({ event: 'availability-changed', isOnline, isOutOfOffice: false, opensAt: null })}`,
         '*'
       );
     }
@@ -121,7 +121,7 @@ describe('App availability-changed', () => {
     await store.dispatch('agent/updatePresence', { 1: 'offline' });
     await nextTick();
     expect(postMessage).toHaveBeenCalledExactlyOnceWith(
-      'chatwoot-widget:{"event":"availability-changed","isOnline":false}',
+      'chatwoot-widget:{"event":"availability-changed","isOnline":false,"isOutOfOffice":false,"opensAt":null}',
       '*'
     );
 
@@ -129,7 +129,7 @@ describe('App availability-changed', () => {
     await nextTick();
     expect(postMessage).toHaveBeenCalledTimes(2);
     expect(postMessage).toHaveBeenLastCalledWith(
-      'chatwoot-widget:{"event":"availability-changed","isOnline":true}',
+      'chatwoot-widget:{"event":"availability-changed","isOnline":true,"isOutOfOffice":false,"opensAt":null}',
       '*'
     );
   });
@@ -144,7 +144,7 @@ describe('App availability-changed', () => {
     store.commit('agent/setError', false);
     await nextTick();
     expect(postMessage).toHaveBeenCalledExactlyOnceWith(
-      'chatwoot-widget:{"event":"availability-changed","isOnline":true}',
+      'chatwoot-widget:{"event":"availability-changed","isOnline":true,"isOutOfOffice":false,"opensAt":null}',
       '*'
     );
   });
@@ -188,7 +188,72 @@ describe('App availability-changed', () => {
     store.commit('agent/setHasFetched', true);
     await nextTick();
     expect(postMessage).toHaveBeenCalledExactlyOnceWith(
-      'chatwoot-widget:{"event":"availability-changed","isOnline":false}',
+      'chatwoot-widget:{"event":"availability-changed","isOnline":false,"isOutOfOffice":true,"opensAt":null}',
+      '*'
+    );
+  });
+  // EVIRMA: Exercise real schedule calculations through the parent event.
+  it('reports the next opening in the inbox timezone and follows schedule boundaries', async () => {
+    wrapper.unmount();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-15T05:59:00Z'));
+    window.chatwootWebChannel = {
+      ...window.chatwootWebChannel,
+      workingHoursEnabled: true,
+      timezone: 'Europe/Moscow',
+      utcOffset: '+03:00',
+      workingHours: [
+        {
+          day_of_week: 4,
+          open_hour: 9,
+          open_minutes: 0,
+          close_hour: 18,
+          close_minutes: 0,
+          closed_all_day: false,
+        },
+        {
+          day_of_week: 5,
+          open_hour: 10,
+          open_minutes: 30,
+          close_hour: 18,
+          close_minutes: 0,
+          closed_all_day: false,
+        },
+      ],
+    };
+    store.commit('agent/setHasFetched', true);
+    postMessage.mockClear();
+    wrapper = shallowMount(App, {
+      global: { plugins: [store, router], stubs: { 'router-view': true } },
+    });
+    expect(postMessage).toHaveBeenCalledWith(
+      'chatwoot-widget:{"event":"availability-changed","isOnline":false,"isOutOfOffice":true,"opensAt":"09:00"}',
+      '*'
+    );
+    postMessage.mockClear();
+
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith(
+      'chatwoot-widget:{"event":"availability-changed","isOnline":true,"isOutOfOffice":false,"opensAt":"10:30"}',
+      '*'
+    );
+    postMessage.mockClear();
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(postMessage).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date('2026-10-15T15:00:00Z'));
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith(
+      'chatwoot-widget:{"event":"availability-changed","isOnline":false,"isOutOfOffice":true,"opensAt":"10:30"}',
+      '*'
+    );
+    postMessage.mockClear();
+
+    // Only opensAt changes when the next opening moves to the following week.
+    vi.setSystemTime(new Date('2026-10-16T15:00:00Z'));
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith(
+      'chatwoot-widget:{"event":"availability-changed","isOnline":false,"isOutOfOffice":true,"opensAt":"09:00"}',
       '*'
     );
   });

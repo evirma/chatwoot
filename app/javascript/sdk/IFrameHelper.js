@@ -206,11 +206,11 @@ export const IFrameHelper = {
     onEvent({ eventIdentifier: eventName, data }) {
       dispatchWindowEvent({ eventName, data });
     },
-    // EVIRMA: Expose widget availability through the SDK's window events.
-    'availability-changed': ({ isOnline }) => {
+    // EVIRMA: Forward all availability fields as the host event's detail.
+    'availability-changed': ({ event, ...detail }) => {
       dispatchWindowEvent({
         eventName: 'chatwoot:availability-changed',
-        data: { isOnline },
+        data: detail,
       });
     },
     setBubbleLabel(message) {

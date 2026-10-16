@@ -60,19 +60,20 @@ describe('IFrameHelper EVIRMA messages', () => {
     'dispatches availability isOnline=%s to the host',
     isOnline => {
       const listener = vi.fn();
+      const detail = { isOnline, isOutOfOffice: !isOnline, opensAt: '09:00' };
       window.addEventListener('chatwoot:availability-changed', listener);
       IFrameHelper.initPostMessageCommunication();
 
       // EVIRMA: Vitest stores onmessage separately from jsdom event dispatch.
       window.onmessage(
         new MessageEvent('message', {
-          data: `chatwoot-widget:${JSON.stringify({ event: 'availability-changed', isOnline })}`,
+          data: `chatwoot-widget:${JSON.stringify({ event: 'availability-changed', ...detail })}`,
         })
       );
       window.removeEventListener('chatwoot:availability-changed', listener);
 
       expect(listener).toHaveBeenCalledTimes(1);
-      expect(listener.mock.calls[0][0].detail).toEqual({ isOnline });
+      expect(listener.mock.calls[0][0].detail).toEqual(detail);
     }
   );
 });

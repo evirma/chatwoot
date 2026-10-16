@@ -1,7 +1,7 @@
 <script>
 // EVIRMA: Observe the shared agent store independently of header rendering.
 import { mapGetters, mapActions, useStore } from 'vuex';
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { setHeader } from 'widget/helpers/axios';
 import addHours from 'date-fns/addHours';
 import { IFrameHelper, RNHelper } from 'widget/helpers/utils';
@@ -42,10 +42,20 @@ export default {
     const availableAgents = computed(
       () => store.getters['agent/availableAgents']
     );
-    const { isInWorkingHours, isOnline } = useAvailability(availableAgents);
+    // EVIRMA: Reuse the existing polling timer to advance the schedule clock.
+    const availabilityTime = ref(new Date());
+    const { isInWorkingHours, isOnline, isOutOfOffice, opensAt } =
+      useAvailability(availableAgents, availabilityTime);
     const availability = computed(() => {
       const { hasFetched, isError } = store.state.agent.uiFlags;
-      return hasFetched && !isError ? isOnline.value : null;
+      // EVIRMA: Watch the full contract and avoid repeats when none of its fields changed.
+      return hasFetched && !isError
+        ? JSON.stringify({
+            isOnline: isOnline.value,
+            isOutOfOffice: isOutOfOffice.value,
+            opensAt: opensAt.value,
+          })
+        : null;
     });
     watch(
       availability,
@@ -53,14 +63,14 @@ export default {
         if (value !== null && IFrameHelper.isIFrame()) {
           IFrameHelper.sendMessage({
             event: 'availability-changed',
-            isOnline: value,
+            ...JSON.parse(value),
           });
         }
       },
       { immediate: true }
     );
 
-    return { prefersDarkMode, router, isInWorkingHours };
+    return { prefersDarkMode, router, isInWorkingHours, availabilityTime };
   },
   data() {
     return {
@@ -120,10 +130,10 @@ export default {
   mounted() {
     const { websiteToken, locale, widgetColor } = window.chatwootWebChannel;
     // EVIRMA: Keep the host's availability status current without websocket updates.
-    this.agentAvailabilityRefreshInterval = setInterval(
-      () => this.fetchAvailableAgents(websiteToken),
-      AGENT_AVAILABILITY_REFRESH_INTERVAL
-    );
+    this.agentAvailabilityRefreshInterval = setInterval(() => {
+      this.availabilityTime = new Date();
+      this.fetchAvailableAgents(websiteToken);
+    }, AGENT_AVAILABILITY_REFRESH_INTERVAL);
     this.setLocale(locale);
     this.setWidgetColor(widgetColor);
     this.setWidgetColorVariable(widgetColor);

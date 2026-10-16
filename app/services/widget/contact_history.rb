@@ -43,7 +43,7 @@ class Widget::ContactHistory
   end
 
   def payload(message)
-    data = {
+    {
       id: message.id,
       account_id: @account.id,
       content: message.content,
@@ -53,10 +53,21 @@ class Widget::ContactHistory
       conversation_id: message.conversation.display_id,
       inbox_id: message.inbox_id,
       attachments: message.attachments.map(&:push_event_data),
-      channel: channel_data(message.inbox)
+      channel: channel_data(message.inbox),
+      # EVIRMA: Native widget bubbles consume the content type and sender identity.
+      content_type: message.content_type,
+      channel_type: message.inbox.channel_type,
+      sender: sender_data(message)
     }
-    data[:sender] = message.sender.push_event_data.slice(:name, :available_name, :avatar_url) if message.outgoing? && message.sender
-    data
+  end
+
+  # EVIRMA: Reuse native sender serialization, including AgentBot's inbox avatar fallback.
+  def sender_data(message)
+    sender = message.merge_sender_attributes({})[:sender] || {}
+    data = sender.slice(:id, :name, :available_name, :avatar_url, :type)
+    return data unless message.outgoing? && !message.sender.is_a?(User)
+
+    data.merge(name: 'Evirma', available_name: 'Evirma', type: 'agent_bot', avatar_url: sender[:avatar_url].presence || message.inbox.avatar_url)
   end
 
   def channel_data(inbox)

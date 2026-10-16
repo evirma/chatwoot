@@ -26,6 +26,8 @@ class Telegram::IncomingMessageService
       account_id: @inbox.account_id,
       inbox_id: @inbox.id,
       message_type: message_type,
+      # EVIRMA: Keep /start tokens for message_created webhooks, outside public chat/history.
+      private: !business_message_outgoing? && params.dig(:message, :text).to_s.start_with?('/start'),
       sender: message_sender,
       content_attributes: telegram_params_content_attributes,
       source_id: telegram_params_message_id.to_s

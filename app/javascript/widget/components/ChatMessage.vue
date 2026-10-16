@@ -10,6 +10,8 @@ export default {
     UserMessage,
   },
   props: {
+    // EVIRMA: History must not reply into the active conversation.
+    readOnly: { type: Boolean, default: false },
     message: {
       type: Object,
       default: () => {},
@@ -23,6 +25,7 @@ export default {
       return this.message.message_type === MESSAGE_TYPE.INCOMING;
     },
     replyTo() {
+      if (this.readOnly) return null;
       const replyTo = this.message?.content_attributes?.in_reply_to;
       return replyTo ? this.allMessages[replyTo] : null;
     },
@@ -36,13 +39,24 @@ export default {
     :id="`cwmsg-${message.id}`"
     :message="message"
     :reply-to="replyTo"
-  />
+    :read-only="readOnly"
+  >
+    <!-- EVIRMA: History adds channel/time metadata inside the native layout. -->
+    <template v-if="$slots.metadata" #metadata>
+      <slot name="metadata" />
+    </template>
+  </UserMessage>
   <AgentMessage
     v-else
     :id="`cwmsg-${message.id}`"
     :message="message"
     :reply-to="replyTo"
-  />
+    :read-only="readOnly"
+  >
+    <template v-if="$slots.metadata" #metadata>
+      <slot name="metadata" />
+    </template>
+  </AgentMessage>
 </template>
 
 <style scoped lang="scss">

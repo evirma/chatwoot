@@ -1,7 +1,8 @@
 <script>
 import ChatMessage from 'widget/components/ChatMessage.vue';
 import AgentTypingBubble from 'widget/components/AgentTypingBubble.vue';
-import DateSeparator from 'shared/components/DateSeparator.vue';
+// EVIRMA: Format date separators using the widget locale.
+import DateSeparator from 'widget/components/DateSeparator.vue';
 import Spinner from 'shared/components/Spinner.vue';
 // EVIRMA: Cross-channel history precedes the current conversation's messages.
 import EvirmaContactHistory from 'widget/components/EvirmaContactHistory.vue';
