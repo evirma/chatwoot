@@ -29,7 +29,8 @@ export const getters = {
   },
 
   getUISettings($state) {
-    return $state.currentUser.ui_settings || {};
+    // EVIRMA: Keep the contact and Evirma sidebar open for every operator.
+    return { ...$state.currentUser.ui_settings, is_contact_sidebar_open: true };
   },
 
   getAuthUIFlags($state) {
