@@ -118,9 +118,10 @@ export default {
         </div>
         <div class="flex justify-end gap-1">
           <div class="flex flex-col justify-end">
+            <!-- EVIRMA: Keep reply controls visible without a hover-capable pointer. -->
             <MessageReplyButton
               v-if="!readOnly && !isInProgress && !isFailed"
-              class="transition-opacity delay-75 opacity-0 group-hover:opacity-100 sm:opacity-0"
+              class="transition-opacity delay-75 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
               @click="toggleReply"
             />
           </div>

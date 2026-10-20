@@ -396,6 +396,15 @@ const contextMenuEnabledOptions = computed(() => {
     props.status === MESSAGE_STATUS.PROGRESS;
 
   return {
+    // EVIRMA: Mirror the server's authorship and channel rules in the menu.
+    edit:
+      (isOutgoing || props.private) &&
+      (props.sender?.type === 'user' ||
+        props.senderType === SENDER_TYPES.USER) &&
+      (props.sender?.id ?? props.senderId) === props.currentUserId &&
+      hasText &&
+      !isMessageDeleted.value &&
+      !props.isEmailInbox,
     copy: hasText,
     delete:
       (hasText || hasAttachments) &&
@@ -461,6 +470,11 @@ function openContextMenu(e) {
 function closeContextMenu() {
   showContextMenu.value = false;
   contextMenuPosition.value = { x: null, y: null };
+}
+
+// EVIRMA: ReplyBox owns editing state and submission, as it does for replies.
+function handleEdit() {
+  emitter.emit(BUS_EVENTS.EDIT_MESSAGE, props);
 }
 
 function handleReplyTo() {
@@ -549,7 +563,7 @@ provideMessageContext({
   <div
     v-if="shouldRenderMessage"
     :id="`message${props.id}`"
-    class="flex w-full mb-2 message-bubble-container"
+    class="group/context-menu flex w-full mb-2 message-bubble-container"
     :data-message-id="props.id"
     :class="[
       flexOrientationClass,
@@ -606,6 +620,7 @@ provideMessageContext({
         @retry="emit('retry')"
       />
     </div>
+    <!-- EVIRMA: The root hover group reveals this menu; keep right-click support. -->
     <div v-if="shouldShowContextMenu" class="context-menu-wrap">
       <ContextMenu
         v-if="isBubble"
@@ -613,10 +628,10 @@ provideMessageContext({
         :is-open="showContextMenu"
         :enabled-options="contextMenuEnabledOptions"
         :message="payloadForContextMenu"
-        hide-button
         @open="openContextMenu"
         @close="closeContextMenu"
         @reply-to="handleReplyTo"
+        @edit="handleEdit"
       />
     </div>
   </div>

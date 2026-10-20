@@ -89,9 +89,9 @@ describe('#getters', () => {
     });
   });
 
-  // EVIRMA: A saved preference must never hide the conversation sidebar.
+  // EVIRMA: Default to open, but respect a saved closed preference.
   it.each([false, undefined])(
-    'keeps the contact sidebar open with saved value %s',
+    'uses the contact sidebar preference %s',
     savedValue => {
       const uiSettings = {
         is_contact_sidebar_open: savedValue,
@@ -100,7 +100,7 @@ describe('#getters', () => {
       expect(
         getters.getUISettings({ currentUser: { ui_settings: uiSettings } })
       ).toEqual({
-        is_contact_sidebar_open: true,
+        is_contact_sidebar_open: savedValue ?? true,
         icon_type: 'emoji',
       });
       expect(uiSettings.is_contact_sidebar_open).toBe(savedValue);

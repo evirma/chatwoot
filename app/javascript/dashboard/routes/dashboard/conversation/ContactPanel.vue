@@ -9,6 +9,8 @@ import { useAccount } from 'dashboard/composables/useAccount';
 import { useUISettings } from 'dashboard/composables/useUISettings';
 import { FEATURE_FLAGS } from 'dashboard/featureFlags';
 
+// EVIRMA: Use the shared close action to persist the sidebar preference.
+import SidebarActionsHeader from 'dashboard/components-next/SidebarActionsHeader.vue';
 import AccordionItem from 'dashboard/components/Accordion/AccordionItem.vue';
 import ContactConversations from './ContactConversations.vue';
 import ConversationAction from './ConversationAction.vue';
@@ -134,12 +136,11 @@ onMounted(() => {
 
 <template>
   <div class="w-full">
-    <!-- EVIRMA: The persistent conversation sidebar cannot be dismissed. -->
-    <div class="flex items-center px-4 py-2 border-b border-n-weak h-12">
-      <span class="font-medium text-sm text-n-slate-12">
-        {{ $t('CONVERSATION.SIDEBAR.CONTACT') }}
-      </span>
-    </div>
+    <!-- EVIRMA: Closing also dismisses the Evirma column without an overlay. -->
+    <SidebarActionsHeader
+      :title="$t('CONVERSATION.SIDEBAR.CONTACT')"
+      @close="updateUISettings({ is_contact_sidebar_open: false })"
+    />
     <ContactInfo :contact="contact" :channel-type="channelType" />
     <div class="px-2 pb-8 list-group">
       <Draggable

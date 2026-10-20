@@ -18,7 +18,11 @@ require 'faraday/multipart'
 class Telegram::SendAttachmentsService
   pattr_initialize [:message!]
 
+  # EVIRMA: Keep every album/document ID for remote deletion, preserving the original return value.
+  attr_reader :message_ids
+
   def perform
+    @message_ids = []
     attachment_message_id = nil
 
     group_attachments_by_type.each do |type, attachments|
@@ -141,7 +145,12 @@ class Telegram::SendAttachmentsService
   end
 
   def handle_response(response)
-    return true if response.success?
+    if response.success?
+      # EVIRMA: Individual documents and all members of media/audio groups are separate Telegram messages.
+      result = response.parsed_response['result']
+      @message_ids |= (result.is_a?(Array) ? result : [result]).pluck('message_id')
+      return true
+    end
 
     Rails.logger.error "Message Id: #{message.id}  - Error sending attachment to telegram:  #{response.parsed_response}"
     channel.process_error(message, response)

@@ -9,6 +9,8 @@ const { formatDateTime } = useWidgetDate();
 import UserMessage from 'widget/components/UserMessage.vue';
 import AgentMessageBubble from 'widget/components/AgentMessageBubble.vue';
 import MessageReplyButton from 'widget/components/MessageReplyButton.vue';
+// EVIRMA: Reuse the customer message swipe gesture for agent replies.
+import DragWrapper from 'widget/components/DragWrapper.vue';
 import ImageBubble from 'widget/components/ImageBubble.vue';
 import VideoBubble from 'widget/components/VideoBubble.vue';
 import FileBubble from 'widget/components/FileBubble.vue';
@@ -32,6 +34,7 @@ export default {
     FileBubble,
     MessageReplyButton,
     ReplyToChip,
+    DragWrapper,
   },
   mixins: [configMixin, messageMixin],
   props: {
@@ -192,13 +195,17 @@ export default {
           <ReplyToChip :reply-to="replyTo" />
         </div>
         <div class="flex w-full gap-1">
-          <div
+          <!-- EVIRMA: Enable swipe replies while keeping history messages read-only. -->
+          <DragWrapper
             class="space-y-2"
+            direction="left"
+            :disabled="readOnly"
             :class="{
               'w-full':
                 contentType === 'form' &&
                 !messageContentAttributes?.submitted_values,
             }"
+            @dragged="toggleReply"
           >
             <AgentMessageBubble
               v-if="shouldDisplayAgentMessage"
@@ -243,17 +250,32 @@ export default {
                 <FileBubble v-else :url="attachment.data_url" />
               </div>
             </div>
-          </div>
+          </DragWrapper>
           <div class="flex flex-col justify-end">
+            <!-- EVIRMA: Keep reply controls visible without a hover-capable pointer. -->
             <MessageReplyButton
               v-if="!readOnly"
-              class="transition-opacity delay-75 opacity-0 group-hover:opacity-100 sm:opacity-0"
+              class="transition-opacity delay-75 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
               @click="toggleReply"
             />
           </div>
         </div>
-        <!-- EVIRMA: Optional history metadata follows the native bubble. -->
-        <slot name="metadata" />
+        <!-- EVIRMA: Keep the history timestamp and edit label on the same line. -->
+        <div class="flex items-center gap-1">
+          <slot name="metadata" />
+          <div
+            v-if="
+              messageContentAttributes.edited_at &&
+              !messageContentAttributes.deleted
+            "
+            class="flex gap-1 text-xs text-n-slate-11"
+          >
+            <time v-if="!$slots.metadata">{{
+              formatDateTime(message.created_at)
+            }}</time>
+            <span>{{ $t('EVIRMA_MESSAGE_EDIT.EDITED') }}</span>
+          </div>
+        </div>
         <p
           v-if="message.showAvatar || hasRecordedResponse"
           class="agent-name text-n-slate-11"

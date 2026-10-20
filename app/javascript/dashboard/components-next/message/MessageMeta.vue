@@ -149,6 +149,10 @@ const statusToShow = computed(() => {
         {{ readableTime }}
       </time>
     </div>
+    <!-- EVIRMA: The server edit timestamp is also delivered by message.updated. -->
+    <span v-if="contentAttributes.editedAt && !contentAttributes.deleted">
+      {{ $t('CONVERSATION.EVIRMA_MESSAGE_EDIT.EDITED') }}
+    </span>
     <Icon v-if="isPrivate" icon="i-lucide-lock-keyhole" class="size-3" />
     <MessageStatus v-if="showStatusIndicator" :status="statusToShow" />
   </div>

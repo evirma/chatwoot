@@ -80,6 +80,8 @@ const props = defineProps({
   editorId: { type: String, default: '' },
   placeholder: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
+  // EVIRMA: Text-only editing must also disable the editor's inline image uploads.
+  enableImageUpload: { type: Boolean, default: true },
   isPrivate: { type: Boolean, default: false },
   enableSuggestions: { type: Boolean, default: true },
   overrideLineBreaks: { type: Boolean, default: false },
@@ -162,7 +164,9 @@ const editorMenuOptions = computed(() => {
     captainTasksEnabled.value
   );
 
-  return formatting.menu;
+  return props.enableImageUpload
+    ? formatting.menu
+    : formatting.menu.filter(item => item !== 'imageUpload');
 });
 
 const createState = (content, placeholder, plugins = [], methods = {}) => {
@@ -486,6 +490,7 @@ function focusEditor(content) {
 }
 
 function openFileBrowser() {
+  if (!props.enableImageUpload) return;
   imageUpload.value.click();
 }
 
@@ -656,7 +661,7 @@ async function uploadImageToStorage(file) {
 }
 
 function uploadImageIfWithinSizeLimit(file) {
-  if (!file) return;
+  if (!props.enableImageUpload || !file) return;
   if (checkFileSizeLimit(file, MAXIMUM_FILE_UPLOAD_SIZE)) {
     uploadImageToStorage(file);
   } else {
@@ -679,6 +684,7 @@ function onFileChange() {
 
 const allowsInlineImagePaste = computed(
   () =>
+    props.enableImageUpload &&
     !props.isPrivate &&
     (props.channelType === INBOX_TYPES.EMAIL ||
       props.channelType === INBOX_TYPES.WEB)
@@ -885,6 +891,12 @@ watch(
   }
 );
 
+// EVIRMA: Rebuild the toolbar when the composer enters or leaves text-only editing.
+watch(
+  () => props.enableImageUpload,
+  () => reloadState(props.modelValue)
+);
+
 watch(
   computed(() => props.disabled),
   () => editorView?.setProps({})
@@ -1015,6 +1027,7 @@ useEmitter(BUS_EVENTS.INSERT_INTO_RICH_EDITOR, content => {
       @execute-copilot-action="handleCopilotAction"
     />
     <input
+      v-if="enableImageUpload"
       ref="imageUpload"
       type="file"
       accept="image/png, image/jpeg, image/jpg, image/gif, image/webp"

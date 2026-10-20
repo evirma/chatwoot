@@ -6,6 +6,9 @@ import { useUISettings } from 'dashboard/composables/useUISettings';
 import { useTrack } from 'dashboard/composables';
 import { useKeyboardEvents } from 'dashboard/composables/useKeyboardEvents';
 
+// EVIRMA: Reuse the native button for edit cancellation and saving.
+import NextButton from 'dashboard/components-next/button/Button.vue';
+import { parseAPIErrorResponse } from 'dashboard/store/utils/api';
 import ReplyToMessage from './ReplyToMessage.vue';
 import AttachmentPreview from 'dashboard/components/widgets/AttachmentsPreview.vue';
 import ReplyTopPanel from 'dashboard/components/widgets/WootWriter/ReplyTopPanel.vue';
@@ -77,6 +80,7 @@ export default {
     ReplyBottomPanel,
     ReplyEmailHead,
     ReplyToMessage,
+    NextButton, // EVIRMA: Edit controls.
     ReplyTopPanel,
     ContentTemplates,
     WhatsappTemplates,
@@ -106,7 +110,11 @@ export default {
     const { proxy } = getCurrentInstance();
     useKeyboardEvents({
       Escape: {
-        action: () => proxy.hideEmojiPicker(),
+        // EVIRMA: Escape also restores the draft from before editing.
+        action: () => {
+          proxy.hideEmojiPicker();
+          proxy.cancelMessageEdit();
+        },
         allowOnFocusedInput: true,
       },
       '$mod+KeyK': {
@@ -152,6 +160,10 @@ export default {
   },
   data() {
     return {
+      // EVIRMA: Edits have a separate lifetime from new-message drafts.
+      editingMessage: null,
+      draftBeforeEdit: null,
+      isSavingEdit: false,
       message: '',
       inReplyTo: {},
       isFocused: false,
@@ -243,11 +255,15 @@ export default {
       return this.isMetaMessageSendingDisabled && this.isAnInstagramChannel;
     },
     isPrivate() {
+      // EVIRMA: Preserve the edited message type regardless of the reply mode.
+      if (this.editingMessage) return this.editingMessage.private;
       return (
         !this.canSendPublicReply || this.replyType === REPLY_EDITOR_MODES.NOTE
       );
     },
     isOnPrivateNote() {
+      // EVIRMA: Use the same editor formatting for private-note edits.
+      if (this.editingMessage) return this.editingMessage.private;
       if (this.isInstagramReplyRestricted) {
         return true;
       }
@@ -451,6 +467,8 @@ export default {
       return this.conversationId;
     },
     editorStateId() {
+      // EVIRMA: Do not reuse ProseMirror's new-message draft state for edits.
+      if (this.editingMessage) return `edit-${this.editingMessage.id}`;
       return `draft-${this.conversationIdByRoute}-${this.effectiveReplyMode}`;
     },
     audioRecordFormat() {
@@ -523,6 +541,8 @@ export default {
       return !this.showAudioRecorderEditor && !this.copilot.isActive.value;
     },
     isEditorDisabled() {
+      // EVIRMA: Editing does not send a new public reply.
+      if (this.editingMessage) return false;
       return (
         (this.isAWhatsAppChannel || this.isAPIInbox) &&
         !this.isOnPrivateNote &&
@@ -536,6 +556,8 @@ export default {
         // Only update email fields when switching to a completely different conversation (by ID)
         // This prevents overwriting user input (e.g., CC/BCC fields) when performing actions
         // like self-assign or other updates that do not actually change the conversation context
+        // EVIRMA: Restore the old conversation draft before switching context.
+        this.cancelMessageEdit();
         this.setCCAndToEmailsFromLastChat();
         // Reset Copilot editor state (includes cancelling ongoing generation)
         this.copilot.reset();
@@ -585,6 +607,8 @@ export default {
       if (!isAvailable) this.hideContentTemplatesModal();
     },
     effectiveReplyMode(updatedReplyType) {
+      // EVIRMA: An edit must not switch or overwrite reply/note drafts.
+      if (this.editingMessage) return;
       this.$store.dispatch('draftMessages/setReplyEditorMode', {
         mode: updatedReplyType,
       });
@@ -617,6 +641,8 @@ export default {
     );
 
     this.fetchAndSetReplyTo();
+    // EVIRMA: Follow the existing composer event lifecycle.
+    emitter.on(BUS_EVENTS.EDIT_MESSAGE, this.startMessageEdit);
     emitter.on(BUS_EVENTS.TOGGLE_REPLY_TO_MESSAGE, this.onReplyToMessage);
 
     // A hacky fix to solve the drag and drop
@@ -630,6 +656,9 @@ export default {
   },
   unmounted() {
     document.removeEventListener('paste', this.onPaste);
+    // EVIRMA: Restore drafts when navigating away during an edit.
+    this.cancelMessageEdit();
+    emitter.off(BUS_EVENTS.EDIT_MESSAGE, this.startMessageEdit);
     emitter.off(BUS_EVENTS.TOGGLE_REPLY_TO_MESSAGE, this.onReplyToMessage);
     emitter.off(
       BUS_EVENTS.NEW_CONVERSATION_MODAL,
@@ -638,6 +667,47 @@ export default {
     emitter.off(CMD_AI_ASSIST, this.executeCopilotAction);
   },
   methods: {
+    // EVIRMA: Keep the unsent text/files intact while editing an existing message.
+    startMessageEdit(message) {
+      if (message.conversationId !== this.conversationId || this.isSavingEdit)
+        return;
+      this.cancelMessageEdit();
+      this.saveDraft(this.conversationId, this.effectiveReplyMode);
+      this.draftBeforeEdit = {
+        message: this.message,
+        attachedFiles: this.attachedFiles,
+      };
+      this.copilot.reset();
+      this.resetAudioRecorderInput();
+      this.editingMessage = message;
+      this.attachedFiles = [];
+      this.message = message.content;
+      this.$nextTick(() => this.messageEditor?.focusEditorInputField());
+    },
+    cancelMessageEdit() {
+      if (!this.editingMessage) return;
+      this.message = this.draftBeforeEdit.message;
+      this.attachedFiles = this.draftBeforeEdit.attachedFiles;
+      this.editingMessage = null;
+      this.draftBeforeEdit = null;
+    },
+    async saveMessageEdit() {
+      if (this.isSavingEdit || this.isReplyButtonDisabled) return;
+      const editingMessage = this.editingMessage;
+      this.isSavingEdit = true;
+      try {
+        await this.$store.dispatch('editMessage', {
+          conversationId: editingMessage.conversationId,
+          messageId: editingMessage.id,
+          content: this.message,
+        });
+        if (this.editingMessage === editingMessage) this.cancelMessageEdit();
+      } catch (error) {
+        useAlert(parseAPIErrorResponse(error));
+      } finally {
+        this.isSavingEdit = false;
+      }
+    },
     openContactInfoTemplateModal() {
       this.requestContactInfoTemplatesOnly = true;
       this.showWhatsAppTemplatesModal = true;
@@ -712,6 +782,8 @@ export default {
       this.attachedFiles = [];
     },
     saveDraft(conversationId, replyType) {
+      // EVIRMA: Never autosave an existing message into a new-message draft.
+      if (this.editingMessage) return;
       if (this.message || this.message === '') {
         const key = this.getDraftKey(conversationId, replyType);
         const draftToSave = trimContent(this.message || '', this.maxLength);
@@ -790,6 +862,8 @@ export default {
       );
     },
     onPaste(e) {
+      // EVIRMA: Editing changes text only, including when files are pasted.
+      if (this.editingMessage) return;
       // Don't handle paste if compose new conversation modal is open
       if (this.newConversationModalActive) return;
 
@@ -954,6 +1028,11 @@ export default {
           });
     },
     async onSendReply() {
+      // EVIRMA: Both the send button and keyboard submit the edit route.
+      if (this.editingMessage) {
+        await this.saveMessageEdit();
+        return;
+      }
       const undefinedVariables = getUndefinedVariablesInMessage({
         message: this.message,
         variables: this.messageVariables,
@@ -1336,7 +1415,23 @@ export default {
 <template>
   <ReplyBoxBanner :message="message" :is-on-private-note="isOnPrivateNote" />
   <div class="reply-box" :class="replyBoxClass">
+    <!-- EVIRMA: Editing uses the normal composer without mode/attachment controls. -->
+    <div
+      v-if="editingMessage"
+      class="flex items-center justify-between gap-2 px-3 py-2 text-sm text-n-slate-12 bg-n-alpha-2"
+    >
+      <span>{{ $t('CONVERSATION.EVIRMA_MESSAGE_EDIT.EDITING') }}</span>
+      <NextButton
+        :label="$t('GENERAL.CANCEL')"
+        :aria-label="$t('GENERAL.CANCEL')"
+        icon="i-lucide-x"
+        ghost
+        sm
+        @click="cancelMessageEdit"
+      />
+    </div>
     <ReplyTopPanel
+      v-else
       :mode="replyType"
       :conversation-id="conversationId"
       :is-reply-restricted="!canSendPublicReply"
@@ -1371,7 +1466,7 @@ export default {
     >
       <div :key="copilot.editorTransitionKey.value" class="reply-box__top">
         <ReplyToMessage
-          v-if="shouldShowReplyToMessage"
+          v-if="shouldShowReplyToMessage && !editingMessage"
           :message="inReplyTo"
           @dismiss="resetReplyToMessage"
         />
@@ -1426,12 +1521,13 @@ export default {
           :update-selection-with="updateEditorSelectionWith"
           :min-height="4"
           :disabled="isEditorDisabled"
+          :enable-image-upload="!editingMessage"
           enable-insert-events
-          :enable-macros="isMacrosEnabled"
-          enable-variables
+          :enable-macros="isMacrosEnabled && !editingMessage"
+          :enable-variables="!editingMessage"
           :variables="messageVariables"
           :signature="messageSignature"
-          allow-signature
+          :allow-signature="!editingMessage"
           :channel-type="channelType"
           :medium="inbox.medium"
           @typing-off="onTypingOff"
@@ -1493,6 +1589,15 @@ export default {
         @submit="onSubmitCopilotReply"
         @cancel="copilot.reset"
       />
+      <!-- EVIRMA: No upload/drop target or attachment shortcuts exist while editing. -->
+      <div v-else-if="editingMessage" class="flex justify-end p-3">
+        <NextButton
+          :label="$t('CONVERSATION.EVIRMA_MESSAGE_EDIT.SAVE')"
+          :disabled="isSavingEdit || isReplyButtonDisabled"
+          :is-loading="isSavingEdit"
+          @click="onSendReply"
+        />
+      </div>
       <ReplyBottomPanel
         v-else
         key="reply-bottom-panel"

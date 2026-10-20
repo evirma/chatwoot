@@ -22,7 +22,7 @@ RSpec.describe '/api/v1/widget/contact_history', type: :request do
     history = response.parsed_body['payload']
     expect(history.pluck('id')).to eq([message.id, incoming.id])
     expect(history.first).to include('id' => message.id, 'message_type' => 'outgoing', 'created_at' => message.created_at.to_i,
-                                    'channel_type' => 'Channel::Api')
+                                     'channel_type' => 'Channel::Api')
     expect(history.first['attachments']).to eq(message.attachments.map(&:push_event_data).as_json)
     expect(history.first['sender']).to include('name' => message.sender.name, 'avatar_url' => message.sender.avatar_url, 'type' => 'user')
     expect(history.last['sender']).to include('name' => contact.name, 'type' => 'contact')
@@ -62,6 +62,18 @@ RSpec.describe '/api/v1/widget/contact_history', type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(response.parsed_body['payload']).to eq([])
+  end
+
+  # EVIRMA: History exposes edits but never resurrects soft-deleted messages.
+  it 'omits deleted messages and returns edit metadata for visible messages' do
+    message.update!(content: 'Edited text', content_attributes: { edited_at: '2026-10-19T12:00:00Z', previous_content: 'Original text' })
+    create(:message, account: account, conversation: conversation, content_attributes: { deleted: true })
+
+    get '/api/v1/widget/contact_history', params: { website_token: web_widget.website_token }, headers: { 'X-Auth-Token' => token }
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body['payload'].pluck('id')).to eq([message.id])
+    expect(response.parsed_body['payload'].first['content_attributes']).to include('edited_at' => '2026-10-19T12:00:00Z')
   end
 
   it 'returns no history for guests' do

@@ -1,11 +1,11 @@
-// EVIRMA: Operators cannot hide the contact sidebar via a button or Alt+O.
-import { mount } from '@vue/test-utils';
+// EVIRMA: The contact sidebar can be closed independently of Captain.
+import { mount, flushPromises } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import SidepanelSwitch from '../SidepanelSwitch.vue';
 
-describe('persistent contact sidebar controls', () => {
+describe('contact sidebar controls', () => {
   it.each([false, true])(
-    'keeps only the optional copilot control (enabled: %s)',
+    'toggles contact with the button and Alt+O (Captain enabled: %s)',
     async enabled => {
       const updateUISettings = vi.fn();
       const store = createStore({
@@ -17,18 +17,24 @@ describe('persistent contact sidebar controls', () => {
         actions: { updateUISettings },
       });
       const wrapper = mount(SidepanelSwitch, { global: { plugins: [store] } });
-      expect(wrapper.find('.i-ph-user-bold').exists()).toBe(false);
-      expect(wrapper.findAll('button')).toHaveLength(enabled ? 1 : 0);
-      window.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'o', code: 'KeyO', altKey: true })
+      await flushPromises();
+      expect(wrapper.findAll('button')).toHaveLength(enabled ? 2 : 1);
+      await wrapper.findAll('button')[0].trigger('click');
+      expect(
+        updateUISettings.mock.calls[0][1].uiSettings.is_contact_sidebar_open
+      ).toBe(false);
+      updateUISettings.mockClear();
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'o',
+          code: 'KeyO',
+          altKey: true,
+          bubbles: true,
+        })
       );
-      expect(updateUISettings).not.toHaveBeenCalled();
-      if (enabled) {
-        await wrapper.get('button').trigger('click');
-        expect(
-          updateUISettings.mock.calls[0][1].uiSettings.is_contact_sidebar_open
-        ).toBe(true);
-      }
+      expect(
+        updateUISettings.mock.calls[0][1].uiSettings.is_contact_sidebar_open
+      ).toBe(false);
       wrapper.unmount();
     }
   );

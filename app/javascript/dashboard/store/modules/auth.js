@@ -29,8 +29,12 @@ export const getters = {
   },
 
   getUISettings($state) {
-    // EVIRMA: Keep the contact and Evirma sidebar open for every operator.
-    return { ...$state.currentUser.ui_settings, is_contact_sidebar_open: true };
+    // EVIRMA: Open by default while respecting the operator's saved choice.
+    return {
+      ...$state.currentUser.ui_settings,
+      is_contact_sidebar_open:
+        $state.currentUser.ui_settings?.is_contact_sidebar_open ?? true,
+    };
   },
 
   getAuthUIFlags($state) {

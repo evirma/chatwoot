@@ -82,6 +82,54 @@ describe('contactHistory', () => {
     expect(store.state.contactHistory.records.at(-1).id).toBe(102);
   });
 
+  // EVIRMA: Live edits/deletions must beat an older response already in flight.
+  it('does not resurrect a deletion when the history request finishes', async () => {
+    let resolveRequest;
+    API.get.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          resolveRequest = resolve;
+        })
+    );
+    const pending = store.dispatch('contactHistory/fetch');
+    await store.dispatch('contactHistory/addMessage', {
+      id: 1,
+      created_at: 10,
+      content_attributes: { deleted: true },
+    });
+    resolveRequest({
+      data: { payload: [{ id: 1, created_at: 10, content: 'Old text' }] },
+    });
+    await pending;
+    expect(store.state.contactHistory.records).toEqual([]);
+  });
+
+  it('refreshes existing text after reconnect and applies live edits once', async () => {
+    await store.dispatch('contactHistory/addMessage', {
+      id: 1,
+      created_at: 10,
+      content: 'Old text',
+    });
+    API.get.mockResolvedValue({
+      data: { payload: [{ id: 1, created_at: 10, content: 'Edited offline' }] },
+    });
+    await store.dispatch('contactHistory/fetch');
+    expect(store.state.contactHistory.records[0].content).toBe(
+      'Edited offline'
+    );
+    await store.dispatch('contactHistory/addMessage', {
+      id: 1,
+      created_at: 10,
+      content: 'Edited live',
+      content_attributes: { edited_at: 'now' },
+    });
+    expect(store.state.contactHistory.records).toHaveLength(1);
+    expect(store.state.contactHistory.records[0].content).toBe('Edited live');
+    expect(
+      store.state.contactHistory.records[0].content_attributes.edited_at
+    ).toBe('now');
+  });
+
   it('does not prevent the current conversation from loading when history fails', async () => {
     API.get.mockRejectedValue(new Error('Network error'));
 

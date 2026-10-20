@@ -83,6 +83,28 @@ describe('widget dates', () => {
     delete window.chatwootWebChannel;
   });
 
+  // EVIRMA: The edit marker follows locale changes and is absent on untouched messages.
+  it('shows edited beside the timestamp only after an update', async () => {
+    const wrapper = shallowMount(AgentMessage, {
+      props: { message: { ...message, attachments: [] } },
+      global: { plugins: [store] },
+    });
+    expect(wrapper.text()).not.toContain('изменено');
+    await wrapper.setProps({
+      message: {
+        ...message,
+        attachments: [],
+        content_attributes: { edited_at: '2026-10-19T12:00:00Z' },
+      },
+    });
+    expect(wrapper.text()).toContain('изменено');
+    expect(wrapper.get('time').text()).toBe('14.11.2023, 22:13');
+    i18n.global.locale.value = 'en';
+    await nextTick();
+    expect(wrapper.text()).toContain('edited');
+    wrapper.unmount();
+  });
+
   it.each([
     [AgentMessage, '14.11.2023, 22:13', '11/14/2023, 10:13 PM'],
     [UserMessage, '22:13', '10:13 PM'],

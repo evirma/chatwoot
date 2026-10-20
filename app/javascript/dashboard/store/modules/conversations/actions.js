@@ -476,6 +476,16 @@ const actions = {
     );
   },
 
+  // EVIRMA: Use the normal message merge so HTTP and ActionCable share one state.
+  async editMessage({ commit }, { conversationId, messageId, content }) {
+    const { data } = await MessageApi.updateContent(
+      conversationId,
+      messageId,
+      content
+    );
+    commit(types.ADD_MESSAGE, data);
+  },
+
   deleteMessage: async function deleteLabels(
     { commit },
     { conversationId, messageId }

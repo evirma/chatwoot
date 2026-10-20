@@ -88,6 +88,14 @@ class MessageApi extends ApiClient {
     });
   }
 
+  // EVIRMA: Keep text editing separate from API-channel status updates.
+  updateContent(conversationId, messageId, content) {
+    return axios.patch(
+      `${this.url}/${conversationId}/messages/${messageId}/content`,
+      { content }
+    );
+  }
+
   delete(conversationID, messageId) {
     return axios.delete(`${this.url}/${conversationID}/messages/${messageId}`);
   }

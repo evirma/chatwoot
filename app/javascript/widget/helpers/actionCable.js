@@ -26,6 +26,8 @@ class ActionCableConnector extends BaseActionCableConnector {
       'message.created': this.onMessageCreated,
       // EVIRMA: A separate event never enters the active conversation's message list.
       'contact.history_message.created': this.onContactHistoryMessageCreated,
+      // EVIRMA: Updates never trigger new-message sound or SDK notifications.
+      'contact.history_message.updated': this.onContactHistoryMessageUpdated,
       'message.updated': this.onMessageUpdated,
       'conversation.typing_on': this.onTypingOn,
       'conversation.typing_off': this.onTypingOff,
@@ -93,6 +95,11 @@ class ActionCableConnector extends BaseActionCableConnector {
       eventIdentifier: CHATWOOT_ON_MESSAGE,
       data: { ...data, message_type: MESSAGE_TYPE.OUTGOING },
     });
+  };
+
+  // EVIRMA: The history store handles both replacement and deletion markers.
+  onContactHistoryMessageUpdated = data => {
+    this.app.$store.dispatch('contactHistory/addMessage', data);
   };
 
   onMessageUpdated = data => {

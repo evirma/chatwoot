@@ -18,10 +18,37 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
     @message = message
   end
 
+  # EVIRMA: Edit only the author's text; keep reply metadata and native update events.
+  def update_content
+    message.with_lock do
+      return render json: { error: I18n.t('conversations.messages.edit_forbidden') }, status: :forbidden unless own_message?
+      return render json: { error: I18n.t('conversations.messages.edit_unavailable') }, status: :unprocessable_entity unless editable_message_content?
+
+      content = params[:content]
+      unless content.is_a?(String) && content.present?
+        return render json: { error: I18n.t('conversations.messages.edit_invalid_content') }, status: :unprocessable_entity
+      end
+
+      update_message_content(content)
+    end
+    enqueue_telegram_update('edit')
+    render :update
+  rescue ActiveRecord::RecordInvalid => e
+    render_could_not_create_error(e.message)
+  end
+
   def destroy
-    ActiveRecord::Base.transaction do
-      message.update!(content: I18n.t('conversations.messages.deleted'), content_type: :text, content_attributes: { deleted: true })
+    # EVIRMA: Claim deletion once and retain the Telegram IDs needed after attachments are removed.
+    message.with_lock do
+      return if message.deleted
+
+      message.update!(
+        content: I18n.t('conversations.messages.deleted'), content_type: :text,
+        content_attributes: message.content_attributes.slice('telegram_message_ids', 'telegram_text_message_id').merge('deleted' => true)
+      )
       message.attachments.destroy_all
+      # EVIRMA: Enqueue only the first deletion, within the same lock.
+      enqueue_telegram_update('delete')
     end
   end
 
@@ -55,6 +82,29 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   end
 
   private
+
+  # EVIRMA: Keep author/channel checks and metadata updates inside the edit lock.
+  def own_message?
+    Current.user.is_a?(User) && message.sender == Current.user
+  end
+
+  def editable_message_content?
+    (message.outgoing? || message.private?) && !message.deleted && message.content.present? && !@conversation.inbox.email?
+  end
+
+  def update_message_content(content)
+    message.update!(content: content, content_attributes: message.content_attributes.merge(
+      'edited_at' => Time.current.iso8601, 'previous_content' => message.content
+    ))
+  end
+
+  # EVIRMA: Notes and incoming messages must never change a Telegram customer's messages.
+  def enqueue_telegram_update(operation)
+    return unless @conversation.inbox.telegram? && message.outgoing? && !message.private?
+    return if message.source_id.blank? && message.content_attributes['telegram_message_ids'].blank?
+
+    Telegram::MessageUpdateJob.perform_later(message.id, operation)
+  end
 
   def message
     @message ||= @conversation.messages.find(permitted_params[:id])

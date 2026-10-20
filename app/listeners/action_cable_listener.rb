@@ -44,8 +44,6 @@ class ActionCableListener < BaseListener
     tokens = user_tokens(account, conversation.inbox.members) + contact_tokens(conversation.contact_inbox, message)
 
     broadcast(account, tokens, MESSAGE_CREATED, message.push_event_data)
-    # EVIRMA: Separate event keeps cross-channel replies out of the widget's active conversation.
-    Widget::ContactHistory.new(conversation.contact, account: account).broadcast(message)
   end
 
   def message_updated(event)
@@ -233,4 +231,6 @@ class ActionCableListener < BaseListener
   end
 end
 
+# EVIRMA: Keep cross-channel history delivery separate from the native listener.
+ActionCableListener.prepend(EvirmaContactHistoryListener)
 ActionCableListener.prepend_mod_with('ActionCableListener')

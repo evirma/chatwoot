@@ -49,6 +49,22 @@ RSpec.describe ActionCableListener do
     expect(ActionCableBroadcastJob).not_to have_received(:perform_later).with(anything, 'contact.history_message.created', anything)
   end
 
+  # EVIRMA: Updates preserve the same recipient boundary, including deletion tombstones.
+  it 'broadcasts edits and deletions to history recipients' do
+    message.update!(content: 'Edited text', content_attributes: { edited_at: '2026-10-19T12:00:00Z' })
+    # EVIRMA: The real after_update_commit invokes the listener; do not dispatch the same update twice.
+    expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+      [web_contact_inbox.pubsub_token], 'contact.history_message.updated',
+      hash_including(id: message.id, content: 'Edited text', content_attributes: hash_including('edited_at' => '2026-10-19T12:00:00Z'))
+    ).once
+
+    message.update!(content_attributes: { deleted: true })
+    expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+      [web_contact_inbox.pubsub_token], 'contact.history_message.updated',
+      hash_including(id: message.id, content_attributes: hash_including('deleted' => true))
+    ).once
+  end
+
   it 'does not broadcast guest history' do
     contact.update!(identifier: nil)
 

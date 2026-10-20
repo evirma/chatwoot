@@ -2,6 +2,8 @@
 class Widget::ContactHistory
   LIMIT = 100
   EVENT = 'contact.history_message.created'.freeze
+  # EVIRMA: Separate updates carry edits and deletion markers without new-message notifications.
+  UPDATED_EVENT = 'contact.history_message.updated'.freeze
   CHANNEL_LABELS = {
     'Channel::Telegram' => 'telegram',
     'Channel::Api' => 'max',
@@ -17,12 +19,14 @@ class Widget::ContactHistory
   def messages(excluding_inbox:)
     return [] if @contact.identifier.blank?
 
-    visible_messages.where.not(inbox_id: excluding_inbox.id)
+    # EVIRMA: Filter before LIMIT so deleted records cannot displace visible history.
+    visible_messages.where("(content_attributes #>> '{}')::jsonb ->> 'deleted' IS DISTINCT FROM 'true'").where.not(inbox_id: excluding_inbox.id)
                     .includes(:sender, :attachments, :inbox, :conversation)
-                    .order(created_at: :desc, id: :desc).limit(LIMIT).reverse.map { |message| payload(message) }
+                    .reorder(created_at: :desc, id: :desc).limit(LIMIT).reverse.map { |message| payload(message) }
   end
 
-  def broadcast(message)
+  # EVIRMA: Deleted messages still pass the contact boundary for live removal.
+  def broadcast(message, event: EVENT)
     return if @contact.identifier.blank?
     return unless visible_messages.exists?(id: message.id)
 
@@ -31,7 +35,7 @@ class Widget::ContactHistory
                      .where.not(inbox_id: message.inbox_id).pluck(:pubsub_token)
     return if tokens.empty?
 
-    ActionCableBroadcastJob.perform_later(tokens.uniq, EVENT, payload(message))
+    ActionCableBroadcastJob.perform_later(tokens.uniq, event, payload(message))
   end
 
   private
@@ -47,6 +51,8 @@ class Widget::ContactHistory
       id: message.id,
       account_id: @account.id,
       content: message.content,
+      # EVIRMA: Preserve edit/deletion metadata in HTTP and live history.
+      content_attributes: message.content_attributes,
       message_type: message.message_type,
       sender_type: message.sender_type,
       created_at: message.created_at.to_i,

@@ -34,6 +34,16 @@ describe('Widget ActionCableConnector', () => {
     vi.useRealTimers();
   });
 
+  // EVIRMA: Cross-channel changes update history without creating a notification.
+  it('delivers a history deletion to the history store', () => {
+    const message = { id: 10, content_attributes: { deleted: true } };
+    connector.events['contact.history_message.updated'](message);
+    expect(mockDispatch).toHaveBeenCalledExactlyOnceWith(
+      'contactHistory/addMessage',
+      message
+    );
+  });
+
   it('registers the conversation.status_changed event handler', () => {
     expect(connector.events['conversation.status_changed']).toBe(
       connector.onStatusChange
