@@ -9,7 +9,9 @@ class Telegram::SendOnTelegramService < Base::SendOnChannelService
     ## send reply to telegram message api
     # https://core.telegram.org/bots/api#sendmessage
     message_id = channel.send_message_on_telegram(message)
-    message.update!(source_id: message_id) if message_id.present?
+    # EVIRMA: Also persist all successfully sent IDs when a later attachment fails.
+    message.source_id = message_id if message_id.present?
+    message.save! if message.has_changes_to_save?
   end
 
   def inbox

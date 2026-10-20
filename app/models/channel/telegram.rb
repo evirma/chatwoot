@@ -36,8 +36,15 @@ class Channel::Telegram < ApplicationRecord
   end
 
   def send_message_on_telegram(message)
-    message_id = send_message(message) if message.outgoing_content.present?
-    message_id = Telegram::SendAttachmentsService.new(message: message).perform if message.attachments.present?
+    # EVIRMA: Track the separate text and every attachment without changing source_id's native meaning.
+    text_message_id = send_message(message) if message.outgoing_content.present?
+    message_id = text_message_id
+    attachment_service = Telegram::SendAttachmentsService.new(message: message) if message.attachments.present?
+    message_id = attachment_service.perform if attachment_service
+    message.content_attributes = message.content_attributes.merge(
+      'telegram_message_ids' => [text_message_id, *attachment_service&.message_ids].compact.uniq,
+      'telegram_text_message_id' => text_message_id
+    )
     message_id
   end
 

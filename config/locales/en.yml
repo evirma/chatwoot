@@ -315,6 +315,10 @@ en:
       instagram_shared_story_content: 'Shared story'
       instagram_shared_post_content: 'Shared post'
       deleted: This message was deleted
+      # EVIRMA: Operator text-edit errors.
+      edit_forbidden: Only the author can edit this message.
+      edit_unavailable: This message cannot be edited.
+      edit_invalid_content: Content must be a non-empty string.
       whatsapp:
         list_button_label: 'Choose an item'
         call_permission_request_body: 'We would like to call you regarding your conversation.'

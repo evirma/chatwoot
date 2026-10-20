@@ -47,7 +47,8 @@ export default {
       default: false,
     },
   },
-  emits: ['open', 'close', 'replyTo'],
+  // EVIRMA: Delegate editing to the message/composer flow.
+  emits: ['open', 'close', 'replyTo', 'edit'],
   setup() {
     const { getPlainText } = useMessageFormatter();
 
@@ -208,6 +209,19 @@ export default {
       @close="handleClose"
     >
       <div class="menu-container">
+        <!-- EVIRMA: Availability is supplied by Message using the author's identity. -->
+        <MenuItem
+          v-if="enabledOptions.edit"
+          :option="{
+            icon: 'edit',
+            label: $t('CONVERSATION.EVIRMA_MESSAGE_EDIT.EDIT'),
+          }"
+          variant="icon"
+          @click.stop="
+            $emit('edit');
+            handleClose();
+          "
+        />
         <MenuItem
           v-if="enabledOptions['replyTo']"
           :option="{

@@ -282,6 +282,8 @@ RSpec.describe Channel::Telegram do
 
       allow(Telegram::SendAttachmentsService).to receive(:new).with(message: message).and_return(telegram_attachment_service)
       allow(telegram_attachment_service).to receive(:perform).and_return('telegram_456')
+      # EVIRMA: Native sending also collects every external ID for later edits/deletion.
+      allow(telegram_attachment_service).to receive(:message_ids).and_return(['telegram_456'])
       expect(telegram_channel.send_message_on_telegram(message)).to eq('telegram_456')
     end
   end

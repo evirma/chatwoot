@@ -287,6 +287,10 @@ ru:
       instagram_shared_story_content: 'Общая история'
       instagram_shared_post_content: 'Общая запись'
       deleted: Это сообщение было удалено
+      # EVIRMA: Operator text-edit errors.
+      edit_forbidden: Только автор может изменить это сообщение.
+      edit_unavailable: Это сообщение нельзя изменить.
+      edit_invalid_content: Текст должен быть непустой строкой.
       whatsapp:
         list_button_label: 'Выберите элемент'
         call_permission_request_body: 'Мы хотели бы позвонить Вам по поводу Вашего разговора.'

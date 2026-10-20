@@ -1,8 +1,15 @@
-import { shallowMount } from '@vue/test-utils';
+import { shallowMount, flushPromises } from '@vue/test-utils';
 import { REPLY_EDITOR_MODES } from 'dashboard/components/widgets/WootWriter/constants';
 import { nextTick } from 'vue';
 import { createStore } from 'vuex';
 import ReplyBox from '../ReplyBox.vue';
+// EVIRMA: The browser editor focus is outside these composer-state checks.
+import WootMessageEditor from '../../WootWriter/Editor.vue';
+// EVIRMA: Exercise the public event that opens editing in the existing composer.
+import { BUS_EVENTS } from 'shared/constants/busEvents';
+import { emitter } from 'shared/helpers/mitt';
+import { LocalStorage } from 'shared/helpers/localStorage';
+import { LOCAL_STORAGE_KEYS } from 'dashboard/constants/localStorage';
 import WhatsappTemplates from '../WhatsappTemplates/Modal.vue';
 
 const CHANNELS = [
@@ -95,6 +102,7 @@ const mountWith = ({
   drafts,
   inboxes,
   isMetaMessageSendingDisabled,
+  attachTo,
 }) => {
   const store = buildStore({
     inbox,
@@ -105,12 +113,22 @@ const mountWith = ({
     isMetaMessageSendingDisabled,
   });
   const wrapper = shallowMount(ReplyBox, {
+    attachTo,
     global: {
       plugins: [store],
       mocks: { $t: key => key },
       // The bottom panel sits inside a <Transition>, which shallowMount stubs
       // without rendering its children.
-      stubs: { transition: false },
+      stubs: {
+        transition: false,
+        // EVIRMA: Keep real editor props while replacing ProseMirror's DOM/focus.
+        WootMessageEditor: {
+          name: 'WootMessageEditor',
+          props: WootMessageEditor.props,
+          methods: { focusEditorInputField: vi.fn() },
+          template: '<textarea />',
+        },
+      },
     },
   });
   return { wrapper, store };
@@ -124,6 +142,201 @@ const editor = wrapper =>
   wrapper.findComponent({ name: 'WootMessageEditor' }).props();
 
 describe('ReplyBox', () => {
+  // EVIRMA: Edits submit once through their own route and preserve unsent replies.
+  describe('editing a sent message', () => {
+    const sentMessage = {
+      id: 10,
+      conversationId: 1,
+      content: 'Original text',
+      private: false,
+    };
+
+    it('loads the existing text, disables attachments and restores the original draft on cancel', async () => {
+      const { wrapper, store } = mountWith({
+        inbox: { channel_type: 'Channel::WebWidget' },
+      });
+      await wrapper.setData({ message: 'Unsent reply' });
+      emitter.emit(BUS_EVENTS.EDIT_MESSAGE, sentMessage);
+      await nextTick();
+      expect(editor(wrapper).modelValue).toBe('Original text');
+      expect(wrapper.text()).toContain(
+        'CONVERSATION.EVIRMA_MESSAGE_EDIT.EDITING'
+      );
+      expect(wrapper.findComponent({ name: 'ReplyBottomPanel' }).exists()).toBe(
+        false
+      );
+      expect(editor(wrapper).allowSignature).toBe(false);
+      expect(editor(wrapper).enableImageUpload).toBe(false);
+      wrapper.vm.message = 'Edited text';
+      wrapper.vm.saveDraft(1, REPLY_EDITOR_MODES.REPLY);
+      expect(store.getters['draftMessages/get']('draft-1-REPLY')).toBe(
+        'Unsent reply'
+      );
+      await wrapper.get('[aria-label="GENERAL.CANCEL"]').trigger('click');
+      await nextTick();
+      expect(editor(wrapper).modelValue).toBe('Unsent reply');
+      expect(wrapper.vm.editingMessage).toBeNull();
+      expect(editor(wrapper).enableImageUpload).toBe(true);
+      wrapper.unmount();
+    });
+
+    it('cancels editing with Escape while the editor is focused', async () => {
+      const { wrapper } = mountWith({
+        inbox: { channel_type: 'Channel::WebWidget' },
+        attachTo: document.body,
+      });
+      await wrapper.setData({ message: 'Unsent reply' });
+      emitter.emit(BUS_EVENTS.EDIT_MESSAGE, sentMessage);
+      await flushPromises();
+      const input = wrapper.get('textarea').element;
+      input.focus();
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Escape',
+          code: 'Escape',
+          bubbles: true,
+        })
+      );
+      await nextTick();
+      expect(editor(wrapper).modelValue).toBe('Unsent reply');
+      expect(wrapper.vm.editingMessage).toBeNull();
+      wrapper.unmount();
+    });
+
+    it('saves the edited content instead of creating a new message', async () => {
+      const { wrapper, store } = mountWith({
+        inbox: { channel_type: 'Channel::WebWidget' },
+      });
+      const dispatch = vi.spyOn(store, 'dispatch').mockResolvedValue({});
+      emitter.emit(BUS_EVENTS.EDIT_MESSAGE, sentMessage);
+      await nextTick();
+      await wrapper.setData({ message: 'Edited text' });
+      await wrapper.vm.onSendReply();
+      expect(dispatch).toHaveBeenCalledWith('editMessage', {
+        conversationId: 1,
+        messageId: 10,
+        content: 'Edited text',
+      });
+      expect(
+        dispatch.mock.calls.some(([action]) => action === 'sendMessage')
+      ).toBe(false);
+      expect(wrapper.vm.editingMessage).toBeNull();
+      wrapper.unmount();
+    });
+
+    it('restores a reply draft after editing a private note', async () => {
+      const { wrapper, store } = mountWith({
+        inbox: { channel_type: 'Channel::WebWidget' },
+        drafts: {
+          'draft-1-REPLY': 'Public draft',
+          'draft-1-NOTE': 'Private draft',
+        },
+      });
+      emitter.emit(BUS_EVENTS.EDIT_MESSAGE, { ...sentMessage, private: true });
+      await nextTick();
+      expect(editor(wrapper).isPrivate).toBe(true);
+      wrapper.vm.cancelMessageEdit();
+      await nextTick();
+      expect(editor(wrapper).modelValue).toBe('Public draft');
+      expect(store.getters['draftMessages/get']('draft-1-NOTE')).toBe(
+        'Private draft'
+      );
+      wrapper.unmount();
+    });
+
+    it('keeps failed edits open with the entered text', async () => {
+      const { wrapper, store } = mountWith({
+        inbox: { channel_type: 'Channel::WebWidget' },
+      });
+      vi.spyOn(store, 'dispatch').mockRejectedValue(
+        new Error('Network unavailable')
+      );
+      emitter.emit(BUS_EVENTS.EDIT_MESSAGE, sentMessage);
+      await nextTick();
+      await wrapper.setData({ message: 'Edited text' });
+      await wrapper.vm.onSendReply();
+      expect(editor(wrapper).modelValue).toBe('Edited text');
+      expect(wrapper.vm.editingMessage.id).toBe(10);
+      wrapper.unmount();
+    });
+
+    // EVIRMA: Editing must not leak into the next conversation or overwrite either reply draft.
+    it('resets editing when switching conversations and loads the new conversation draft', async () => {
+      const { wrapper, store } = mountWith({
+        inbox: { channel_type: 'Channel::WebWidget' },
+        drafts: {
+          'draft-1-REPLY': 'First draft',
+          'draft-2-REPLY': 'Second draft',
+        },
+      });
+      emitter.emit(BUS_EVENTS.EDIT_MESSAGE, sentMessage);
+      await nextTick();
+      await wrapper.setData({ message: 'Edited text' });
+
+      store.commit('selectChat', { ...REPLIABLE, id: 2 });
+      await nextTick();
+
+      expect(wrapper.vm.editingMessage).toBeNull();
+      expect(editor(wrapper).modelValue).toBe('Second draft');
+      expect(store.getters['draftMessages/get']('draft-1-REPLY')).toBe(
+        'First draft'
+      );
+      expect(editor(wrapper).enableImageUpload).toBe(true);
+      wrapper.unmount();
+    });
+
+    // EVIRMA: Both exits restore the selected quote and the ordinary send path.
+    it.each(['cancel', 'save'])(
+      'sends a normal reply with its selected quote after %s',
+      async exit => {
+        LocalStorage.updateJsonStore(
+          LOCAL_STORAGE_KEYS.MESSAGE_REPLY_TO,
+          1,
+          99
+        );
+        const { wrapper, store } = mountWith({
+          inbox: { channel_type: 'Channel::WebWidget' },
+          chat: { messages: [{ id: 99, content: 'Quoted message' }] },
+          drafts: { 'draft-1-REPLY': 'Unsent reply' },
+        });
+        const dispatch = vi.spyOn(store, 'dispatch').mockResolvedValue({});
+        emitter.emit(BUS_EVENTS.EDIT_MESSAGE, sentMessage);
+        await nextTick();
+        if (exit === 'save') {
+          await wrapper.setData({ message: 'Edited text' });
+          await wrapper.vm.onSendReply();
+        } else {
+          await wrapper.get('[aria-label="GENERAL.CANCEL"]').trigger('click');
+        }
+        await nextTick();
+        expect(editor(wrapper).modelValue).toBe('Unsent reply');
+        expect(
+          wrapper.findComponent({ name: 'ReplyToMessage' }).props('message').id
+        ).toBe(99);
+        expect(editor(wrapper).enableImageUpload).toBe(true);
+        dispatch.mockClear();
+
+        await wrapper.vm.onSendReply();
+        await flushPromises();
+
+        expect(dispatch).toHaveBeenCalledWith(
+          'createPendingMessageAndSend',
+          expect.objectContaining({
+            conversationId: 1,
+            message: 'Unsent reply',
+            contentAttributes: { in_reply_to: 99 },
+          })
+        );
+        expect(
+          dispatch.mock.calls.some(([action]) => action === 'editMessage')
+        ).toBe(false);
+        expect(editor(wrapper).modelValue).toBe('');
+        wrapper.unmount();
+        LocalStorage.remove(LOCAL_STORAGE_KEYS.MESSAGE_REPLY_TO);
+      }
+    );
+  });
+
   describe('Instagram incident restriction', () => {
     it('opens in note mode and restores only the private-note draft', async () => {
       const { wrapper, store } = mountWith({

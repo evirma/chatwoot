@@ -1,5 +1,11 @@
 {
   "CONVERSATION": {
+    "EVIRMA_MESSAGE_EDIT": {
+      "EDIT": "Edit",
+      "EDITING": "Editing message",
+      "SAVE": "Save",
+      "EDITED": "edited"
+    },
     "REFERRAL": {
       "AD_LABEL": "Ad",
       "POST_LABEL": "Post",
