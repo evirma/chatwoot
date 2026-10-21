@@ -74,7 +74,8 @@ const getWidgetOrigin = () => new URL(window.$chatwoot.baseUrl).origin;
 export const IFrameHelper = {
   getUrl({ baseUrl, websiteToken }) {
     // EVIRMA: Restore an externally stored conversation without relying on cookies.
-    const url = `${baseUrl}/widget?website_token=${websiteToken}`;
+    // EVIRMA: Only a non-secret flag enters the URL; the signed user travels in the bootstrap POST.
+    const url = `${baseUrl}/widget?website_token=${websiteToken}${window.$chatwoot.bootstrapUser ? '&bootstrap=true' : ''}`;
     const { useExternalConversationToken, conversationToken } =
       window.$chatwoot;
     return useExternalConversationToken && conversationToken !== null
@@ -195,6 +196,20 @@ export const IFrameHelper = {
   },
 
   events: {
+    // EVIRMA: The trusted frame requests identity before mounting or connecting its websocket.
+    'bootstrap-request': () => {
+      const {
+        bootstrapUser: user,
+        conversationToken,
+        useExternalConversationToken,
+      } = window.$chatwoot;
+      IFrameHelper.sendMessage('bootstrap', {
+        user,
+        conversationToken: useExternalConversationToken
+          ? conversationToken
+          : Cookies.get('cw_conversation'),
+      });
+    },
     loaded: message => {
       updateAuthCookie(message.config.authToken, window.$chatwoot.baseDomain);
       window.$chatwoot.hasLoaded = true;

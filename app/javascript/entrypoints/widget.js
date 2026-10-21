@@ -5,6 +5,8 @@ import VueDOMPurifyHTML from 'vue-dompurify-html';
 import store from '../widget/store';
 import App from '../widget/App.vue';
 import ActionCableConnector from '../widget/helpers/actionCable';
+// EVIRMA: Signed bootstrap must finish before Vue emits loaded or ActionCable subscribes.
+import { bootstrapWidget } from '../widget/helpers/bootstrap';
 import i18nMessages from '../widget/i18n';
 import router from '../widget/router';
 import { directive as onClickaway } from 'vue3-click-away';
@@ -45,7 +47,9 @@ app.use(
 
 // Vue.config.productionTip = false;
 
-window.onload = () => {
+// EVIRMA: Legacy installs still mount immediately; signed users mount with their final tokens.
+window.onload = async () => {
+  if (window.chatwootBootstrap) await bootstrapWidget();
   window.WOOT_WIDGET = app.mount('#app');
   window.actionCable = new ActionCableConnector(
     window.WOOT_WIDGET,

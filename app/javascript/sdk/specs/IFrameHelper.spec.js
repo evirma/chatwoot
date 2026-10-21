@@ -36,6 +36,79 @@ describe('IFrameHelper EVIRMA messages', () => {
     vi.restoreAllMocks();
   });
 
+  // EVIRMA: Bootstrap exposes only a boolean URL marker and sends credentials to the trusted frame.
+  it.each([false, true])(
+    'bootstraps a signed user with external persistence=%s',
+    external => {
+      const user = {
+        identifier: 'customer',
+        identifier_hash: 'signed-hash',
+        name: 'Customer',
+      };
+      window.$chatwoot.bootstrapUser = user;
+      window.$chatwoot.useExternalConversationToken = external;
+      window.$chatwoot.conversationToken = 'external-token';
+      const getCookie = vi
+        .spyOn(Cookies, 'get')
+        .mockReturnValue('cookie-token');
+      const url = IFrameHelper.getUrl({
+        baseUrl: window.$chatwoot.baseUrl,
+        websiteToken: 'website',
+      });
+      expect(new URL(url).searchParams.get('bootstrap')).toBe('true');
+      expect(url).not.toContain('signed-hash');
+      expect(url).not.toContain('identifier');
+      IFrameHelper.initPostMessageCommunication();
+      const data = 'chatwoot-widget:{"event":"bootstrap-request"}';
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data,
+          source: iframe.contentWindow,
+          origin: 'https://evil.example',
+        })
+      );
+      expect(postMessage).not.toHaveBeenCalled();
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data,
+          source: iframe.contentWindow,
+          origin: 'https://support.evirma.ru',
+        })
+      );
+      expect(postMessage).toHaveBeenCalledExactlyOnceWith(
+        `chatwoot-widget:${JSON.stringify({ event: 'bootstrap', user, conversationToken: external ? 'external-token' : 'cookie-token' })}`,
+        'https://support.evirma.ru'
+      );
+      expect(getCookie).toHaveBeenCalledTimes(external ? 0 : 1);
+    }
+  );
+
+  // EVIRMA: A completed initial identity publishes its final token without another setUser.
+  it('does not identify the bootstrap user a second time after loaded', () => {
+    window.$chatwoot.bootstrapUser = {
+      identifier: 'customer',
+      identifier_hash: 'signed-hash',
+    };
+    window.$chatwoot.useExternalConversationToken = true;
+    vi.spyOn(IFrameHelper, 'onLoad').mockImplementation(() => {});
+    vi.spyOn(IFrameHelper, 'toggleCloseButton').mockImplementation(() => {});
+    const listener = vi.fn();
+    window.addEventListener('chatwoot:conversation-token', listener);
+    IFrameHelper.events.loaded({
+      config: {
+        authToken: 'final-token',
+        channelConfig: { widgetColor: '#000' },
+      },
+    });
+    window.removeEventListener('chatwoot:conversation-token', listener);
+    expect(listener.mock.calls[0][0].detail).toEqual({ token: 'final-token' });
+    expect(
+      postMessage.mock.calls.some(([data]) =>
+        data.includes('"event":"set-user"')
+      )
+    ).toBe(false);
+  });
+
   it.each([false, true])('sends hideHeader=%s in config-set', hideHeader => {
     window.$chatwoot.hideHeader = hideHeader;
     vi.spyOn(IFrameHelper, 'onLoad').mockImplementation(() => {});

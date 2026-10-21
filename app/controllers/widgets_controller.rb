@@ -6,12 +6,16 @@ class WidgetsController < ActionController::Base
   before_action :set_web_widget
   before_action :ensure_account_is_active
   before_action :ensure_location_is_supported
-  before_action :set_token
-  before_action :set_contact
-  before_action :build_contact
+  # EVIRMA: Signed SDK users bootstrap by POST before any anonymous contact is allocated.
+  before_action :set_token, :set_contact, :build_contact, unless: :deferred_bootstrap?
   after_action :allow_iframe_requests
 
   private
+
+  # EVIRMA: The frame URL carries only a non-secret bootstrap flag.
+  def deferred_bootstrap?
+    permitted_params[:bootstrap] == 'true'
+  end
 
   def set_global_config
     @global_config = GlobalConfig.get(
@@ -73,7 +77,8 @@ class WidgetsController < ActionController::Base
   end
 
   def permitted_params
-    params.permit(:website_token, :cw_conversation)
+    # EVIRMA: Identity and its signature are never accepted in the frame URL.
+    params.permit(:website_token, :cw_conversation, :bootstrap)
   end
 
   def allow_iframe_requests

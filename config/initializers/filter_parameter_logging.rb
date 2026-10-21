@@ -11,3 +11,6 @@ filter_regex = /\A(?!.*\bwebsite_token\b).*token/i
 
 # Apply the regex for filtering
 Rails.application.config.filter_parameters += [filter_regex]
+
+# EVIRMA: Persistent identity signatures must never appear in request parameter logs.
+Rails.application.config.filter_parameters += [:identifier_hash]

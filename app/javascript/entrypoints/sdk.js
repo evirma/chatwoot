@@ -68,6 +68,8 @@ const runSDK = ({ baseUrl, websiteToken }) => {
       'conversationToken'
     ),
     conversationToken: chatwootSettings.conversationToken,
+    // EVIRMA: Initial identity is sent by POST before the widget mounts, separately from setUser.
+    bootstrapUser: chatwootSettings.user,
     // EVIRMA: Carry optional host page and messenger settings into the iframe.
     pageUrl:
       chatwootSettings.pageUrl === undefined
@@ -234,6 +236,7 @@ const runSDK = ({ baseUrl, websiteToken }) => {
       }
 
       // EVIRMA: Reset host persistence even when conversation cookies are disabled.
+      window.$chatwoot.bootstrapUser = null;
       window.$chatwoot.conversationToken = null;
       dispatchWindowEvent({
         eventName: 'chatwoot:conversation-token',

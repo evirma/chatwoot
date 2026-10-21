@@ -106,6 +106,25 @@ describe('$chatwoot.skipHome', () => {
 
 // EVIRMA: External persistence and page attribution are configured through the public SDK.
 describe('$chatwoot external host configuration', () => {
+  // EVIRMA: Initial identity travels through bootstrap instead of a second setUser after ready.
+  it('retains the signed bootstrap user when the SDK runs', () => {
+    const user = {
+      identifier: 'customer',
+      identifier_hash: 'signed-hash',
+      name: 'Customer',
+      email: 'customer@example.com',
+    };
+    window.chatwootSettings = { user, conversationToken: null };
+    window.chatwootSDK.run({
+      baseUrl: 'https://support.evirma.ru',
+      websiteToken: 'website',
+    });
+    expect(window.$chatwoot.bootstrapUser).toEqual(user);
+    expect(window.$chatwoot.user).toBeUndefined();
+    window.$chatwoot.reset();
+    expect(window.$chatwoot.bootstrapUser).toBeNull();
+  });
+
   afterEach(() => {
     delete window.$chatwoot;
     delete window.chatwootSettings;
