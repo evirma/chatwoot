@@ -13,6 +13,8 @@ const state = {
   hideHeader: false,
   // EVIRMA: Preserve the home screen unless the host opts out.
   skipHome: false,
+  // EVIRMA: Messenger actions are opt-in for the embedding host.
+  messengerButtons: [],
   hideMessageBubble: false,
   isCampaignViewClicked: false,
   showUnreadMessagesDialog: true,
@@ -65,6 +67,8 @@ export const actions = {
       hideHeader = false,
       // EVIRMA: Home-screen preference from config-set.
       skipHome = false,
+      // EVIRMA: Receive the host messenger preference through config-set.
+      messengerButtons = [],
       showUnreadMessagesDialog,
       widgetStyle = 'rounded',
       darkMode = 'light',
@@ -82,6 +86,8 @@ export const actions = {
       hideHeader: hideHeader === true,
       // EVIRMA: Only a boolean true skips home.
       skipHome: skipHome === true,
+      // EVIRMA: Share messenger actions with both native widget headers.
+      messengerButtons,
       hideMessageBubble: !!hideMessageBubble,
       position: position || 'right',
       showPopoutButton: !!showPopoutButton,
@@ -127,6 +133,8 @@ export const mutations = {
     $state.hideHeader = data.hideHeader;
     // EVIRMA: Share the home-screen preference with widget views.
     $state.skipHome = data.skipHome;
+    // EVIRMA: Retain the configured messenger actions in the widget store.
+    $state.messengerButtons = data.messengerButtons;
     $state.showPopoutButton = data.showPopoutButton;
     $state.position = data.position;
     $state.hideMessageBubble = data.hideMessageBubble;

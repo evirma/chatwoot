@@ -6,6 +6,12 @@ vi.mock('../sdk/IFrameHelper', () => ({
   IFrameHelper: {
     createFrame: vi.fn(),
     sendMessage: vi.fn(),
+    // EVIRMA: Observe public reset and page updates at the existing iframe boundary.
+    events: { onLocationChange: vi.fn(), toggleBubble: vi.fn() },
+    getAppFrame: vi.fn(() => ({ src: '' })),
+    getUrl: vi.fn(
+      () => 'https://support.evirma.ru/widget?website_token=website-token'
+    ),
   },
 }));
 
@@ -95,5 +101,80 @@ describe('$chatwoot.skipHome', () => {
     });
 
     expect(window.$chatwoot.skipHome).toBe(skipHome === true);
+  });
+});
+
+// EVIRMA: External persistence and page attribution are configured through the public SDK.
+describe('$chatwoot external host configuration', () => {
+  afterEach(() => {
+    delete window.$chatwoot;
+    delete window.chatwootSettings;
+    vi.restoreAllMocks();
+  });
+
+  it.each([null, 'host-token'])(
+    'never reads or writes identity cookies with conversationToken=%s',
+    conversationToken => {
+      window.chatwootSettings = { conversationToken };
+      const getCookie = vi.spyOn(Cookies, 'get');
+      const setCookie = vi.spyOn(Cookies, 'set');
+      window.chatwootSDK.run({
+        baseUrl: 'https://support.evirma.ru',
+        websiteToken: 'website-token',
+      });
+      window.$chatwoot.setUser('customer', { name: 'Customer' });
+      expect(window.$chatwoot.useExternalConversationToken).toBe(true);
+      expect(window.$chatwoot.conversationToken).toBe(conversationToken);
+      expect(getCookie).not.toHaveBeenCalled();
+      expect(setCookie).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([{}, { conversationToken: 'host-token' }])(
+    'publishes a null token when reset with %j',
+    settings => {
+      window.chatwootSettings = settings;
+      window.chatwootSDK.run({
+        baseUrl: 'https://support.evirma.ru',
+        websiteToken: 'website-token',
+      });
+      const removeCookie = vi
+        .spyOn(Cookies, 'remove')
+        .mockImplementation(() => {});
+      const listener = vi.fn();
+      window.addEventListener('chatwoot:conversation-token', listener);
+      window.$chatwoot.reset();
+      window.removeEventListener('chatwoot:conversation-token', listener);
+      expect(listener.mock.calls[0][0].detail).toEqual({ token: null });
+      expect(removeCookie).toHaveBeenCalledTimes(
+        'conversationToken' in settings ? 0 : 2
+      );
+      expect(window.$chatwoot.conversationToken).toBeNull();
+    }
+  );
+
+  it('retains page and messenger settings and immediately sends page updates', () => {
+    window.chatwootSettings = {
+      pageUrl: 'https://market.example/products',
+      messengerButtons: ['telegram', 'max'],
+    };
+    window.chatwootSDK.run({
+      baseUrl: 'https://support.evirma.ru',
+      websiteToken: 'website-token',
+    });
+    expect(window.$chatwoot.pageUrl).toBe('https://market.example/products');
+    expect(window.$chatwoot.messengerButtons).toEqual(['telegram', 'max']);
+    window.$chatwoot.setPageUrl('https://market.example/orders');
+    expect(window.$chatwoot.pageUrl).toBe('https://market.example/orders');
+    expect(IFrameHelper.events.onLocationChange).toHaveBeenCalledWith({});
+  });
+
+  it('keeps cookie persistence and messenger buttons disabled by default', () => {
+    window.chatwootSDK.run({
+      baseUrl: 'https://support.evirma.ru',
+      websiteToken: 'website-token',
+    });
+    expect(window.$chatwoot.useExternalConversationToken).toBe(false);
+    expect(window.$chatwoot.messengerButtons).toEqual([]);
   });
 });

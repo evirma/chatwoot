@@ -1,7 +1,8 @@
 <script>
 // EVIRMA: Observe the shared agent store independently of header rendering.
 import { mapGetters, mapActions, useStore } from 'vuex';
-import { computed, ref, watch } from 'vue';
+// EVIRMA: Share the existing polling clock with native header availability text.
+import { computed, provide, ref, watch } from 'vue';
 import { setHeader } from 'widget/helpers/axios';
 import addHours from 'date-fns/addHours';
 import { IFrameHelper, RNHelper } from 'widget/helpers/utils';
@@ -21,7 +22,10 @@ import {
 } from './constants/widgetBusEvents';
 import { useDarkMode } from 'widget/composables/useDarkMode';
 import { useRouter } from 'vue-router';
-import { useAvailability } from 'widget/composables/useAvailability';
+import {
+  EVIRMA_AVAILABILITY_TIME,
+  useAvailability,
+} from 'widget/composables/useAvailability';
 import { SDK_SET_BUBBLE_VISIBILITY } from '../shared/constants/sharedFrameEvents';
 import { emitter } from 'shared/helpers/mitt';
 
@@ -44,6 +48,8 @@ export default {
     );
     // EVIRMA: Reuse the existing polling timer to advance the schedule clock.
     const availabilityTime = ref(new Date());
+    // EVIRMA: Header status and parent events must cross schedule boundaries together.
+    provide(EVIRMA_AVAILABILITY_TIME, availabilityTime);
     const { isInWorkingHours, isOnline, isOutOfOffice, opensAt } =
       useAvailability(availableAgents, availabilityTime);
     const availability = computed(() => {
@@ -322,6 +328,11 @@ export default {
         }
         const message = IFrameHelper.getMessage(e);
         if (message.event === 'config-set') {
+          // EVIRMA: Apply external attribution before loading or creating conversations.
+          if (message.referrerURL !== undefined) {
+            window.referrerURL = message.referrerURL;
+            this.setReferrerHost(message.referrerHost);
+          }
           this.setLocale(message.locale);
           this.setBubbleLabel();
           this.fetchOldConversations().then(() => this.setUnreadView());

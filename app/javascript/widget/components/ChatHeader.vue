@@ -1,10 +1,16 @@
 <script setup>
-import { toRef } from 'vue';
+// EVIRMA: Keep the header presence indicator on the same schedule clock as its status.
+import { computed, inject, toRef } from 'vue';
 import { useRouter } from 'vue-router';
 import FluentIcon from 'shared/components/FluentIcon/Index.vue';
 import HeaderActions from './HeaderActions.vue';
+// EVIRMA: Offer the configured messenger actions in the compact header.
+import MessengerButtons from './MessengerButtons.vue';
 import AvailabilityContainer from 'widget/components/Availability/AvailabilityContainer.vue';
-import { useAvailability } from 'widget/composables/useAvailability';
+import {
+  EVIRMA_AVAILABILITY_TIME,
+  useAvailability,
+} from 'widget/composables/useAvailability';
 
 const props = defineProps({
   avatarUrl: { type: String, default: '' },
@@ -17,7 +23,14 @@ const props = defineProps({
 const availableAgents = toRef(props, 'availableAgents');
 
 const router = useRouter();
-const { isOnline } = useAvailability(availableAgents);
+// EVIRMA: Advance the compact header when the shared app polling clock changes.
+const { isOnline } = useAvailability(
+  availableAgents,
+  inject(
+    EVIRMA_AVAILABILITY_TIME,
+    computed(() => new Date())
+  )
+);
 
 const onBackButtonClick = () => {
   router.replace({ name: 'home' });
@@ -60,6 +73,8 @@ const onBackButtonClick = () => {
           :show-avatars="false"
           text-classes="text-xs leading-3"
         />
+        <!-- EVIRMA: Keep optional messenger actions beneath the native status. -->
+        <MessengerButtons />
       </div>
     </div>
     <HeaderActions :show-popout-button="showPopoutButton" />

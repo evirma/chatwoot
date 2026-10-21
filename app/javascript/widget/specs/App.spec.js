@@ -257,4 +257,50 @@ describe('App availability-changed', () => {
       '*'
     );
   });
+  // EVIRMA: External page attribution must be available before conversation loading, without fetching campaigns twice.
+  it('applies config-set attribution before fetching conversations', async () => {
+    store.registerModule('contacts', {
+      namespaced: true,
+      actions: { get: vi.fn() },
+    });
+    const fetchConversations = vi
+      .spyOn(wrapper.vm, 'fetchOldConversations')
+      .mockImplementation(() => {
+        expect(window.referrerURL).toBe('https://market.example/orders/42');
+        expect(store.state.appConfig.referrerHost).toBe('market.example');
+        return Promise.resolve();
+      });
+    vi.spyOn(wrapper.vm, 'setLocale').mockImplementation(() => {});
+    vi.spyOn(wrapper.vm, 'setBubbleLabel').mockImplementation(() => {});
+    vi.spyOn(wrapper.vm, 'setUnreadView').mockImplementation(() => {});
+    const initCampaigns = vi
+      .spyOn(wrapper.vm, 'initCampaigns')
+      .mockImplementation(() => {});
+    const data = {
+      event: 'config-set',
+      referrerURL: 'https://market.example/orders/42',
+      referrerHost: 'market.example',
+      messengerButtons: ['max'],
+    };
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: `chatwoot-widget:${JSON.stringify(data)}`,
+      })
+    );
+    await nextTick();
+    expect(fetchConversations).toHaveBeenCalledOnce();
+    expect(initCampaigns).not.toHaveBeenCalled();
+    expect(store.state.appConfig.messengerButtons).toEqual(['max']);
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: 'chatwoot-widget:{"event":"change-url","referrerURL":"https://market.example/orders/42","referrerHost":"market.example"}',
+      })
+    );
+    expect(initCampaigns).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        currentURL: 'https://market.example/orders/42',
+      })
+    );
+    delete window.referrerURL;
+  });
 });
