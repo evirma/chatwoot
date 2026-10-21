@@ -8,7 +8,9 @@ RSpec.describe ActionCableListener do
   let(:conversation) { create(:conversation, account: account, contact: contact, inbox: inbox) }
   let(:message) { create(:message, account: account, conversation: conversation, message_type: :outgoing) }
   let(:event) { Events::Base.new(:'message.created', Time.zone.now, message: message) }
-  let!(:web_contact_inbox) { create(:contact_inbox, contact: contact, inbox: create(:channel_widget, account: account).inbox) }
+  let!(:web_contact_inbox) do
+    create(:contact_inbox, contact: contact, inbox: create(:channel_widget, account: account).inbox, hmac_verified: true)
+  end
 
   before do
     message
@@ -16,10 +18,10 @@ RSpec.describe ActionCableListener do
   end
 
   it 'sends an outgoing reply only to this contact web inbox tokens in the same account' do
-    second_web_inbox = create(:contact_inbox, contact: contact, inbox: create(:channel_widget, account: account).inbox)
-    create(:contact_inbox, inbox: web_contact_inbox.inbox)
-    create(:contact_inbox, contact: contact, inbox: create(:channel_widget).inbox)
-    create(:contact_inbox, contact: contact, inbox: create(:channel_api, account: account).inbox)
+    second_web_inbox = create(:contact_inbox, contact: contact, inbox: create(:channel_widget, account: account).inbox, hmac_verified: true)
+    create(:contact_inbox, inbox: web_contact_inbox.inbox, hmac_verified: true)
+    create(:contact_inbox, contact: contact, inbox: create(:channel_widget).inbox, hmac_verified: true)
+    create(:contact_inbox, contact: contact, inbox: create(:channel_api, account: account).inbox, hmac_verified: true)
 
     described_class.instance.message_created(event)
 
@@ -63,6 +65,15 @@ RSpec.describe ActionCableListener do
       [web_contact_inbox.pubsub_token], 'contact.history_message.updated',
       hash_including(id: message.id, content_attributes: hash_including('deleted' => true))
     ).once
+  end
+
+  # EVIRMA: Live history must enforce the same verified-session boundary as HTTP history.
+  it 'does not broadcast history to unverified contact inboxes' do
+    web_contact_inbox.update!(hmac_verified: false)
+
+    described_class.instance.message_created(event)
+
+    expect(ActionCableBroadcastJob).not_to have_received(:perform_later).with(anything, 'contact.history_message.created', anything)
   end
 
   it 'does not broadcast guest history' do

@@ -5,12 +5,21 @@ class Widget::BootstrapContactService
   def perform
     return identify_unverified_contact unless hmac_verified
 
-    ActiveRecord::Base.transaction do
-      guest = locked_guest_contact
-      contact = find_or_create_contact
-      verified_inbox = resolve_verified_inbox(contact, guest)
-      update_contact(contact)
-      verified_inbox
+    retries = 0
+    begin
+      ActiveRecord::Base.transaction do
+        guest = locked_guest_contact
+        contact = find_or_create_contact
+        verified_inbox = resolve_verified_inbox(contact, guest)
+        update_contact(contact)
+        verified_inbox
+      end
+    rescue ActiveRecord::Deadlocked, ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
+      raise if retries == 1 || (e.is_a?(ActiveRecord::RecordInvalid) && !e.record.errors.of_kind?(:identifier, :taken))
+
+      # EVIRMA: Retry the entire rolled-back transaction once after an identity race or deadlock.
+      retries += 1
+      retry
     end
   end
 

@@ -16,6 +16,57 @@ RSpec.describe Widget::BootstrapContactService do
   end
 
   describe '#perform' do
+    # EVIRMA: Concurrent identity creation must retry once and return a verified session.
+    [ActiveRecord::Deadlocked, ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid].each do |error_class|
+      context "when the transaction raises #{error_class.name}" do
+        let(:error) do
+          if error_class.name == 'ActiveRecord::RecordInvalid'
+            duplicate = account.contacts.new(identifier: identifier)
+            duplicate.errors.add(:identifier, :taken)
+            error_class.new(duplicate)
+          else
+            error_class.new('concurrent bootstrap')
+          end
+        end
+
+        it 'retries the transaction and returns the verified contact inbox' do
+          contacts = web_widget.account.contacts
+          attempts = 0
+          allow(contacts).to receive(:find_or_create_by!).and_wrap_original do |original, *args, &block|
+            attempts += 1
+            raise error if attempts == 1
+
+            original.call(*args, &block)
+          end
+
+          verified_inbox = service.perform
+
+          expect(verified_inbox.contact_id).to eq(identified_contact.id)
+          expect(verified_inbox).to be_hmac_verified
+          expect(contacts).to have_received(:find_or_create_by!).twice
+        end
+
+        it 'propagates the error after one retry' do
+          contacts = web_widget.account.contacts
+          allow(contacts).to receive(:find_or_create_by!).and_raise(error)
+
+          expect { service.perform }.to raise_error(satisfy { |raised| raised.equal?(error) })
+          expect(contacts).to have_received(:find_or_create_by!).twice
+        end
+      end
+    end
+
+    it 'does not retry validation errors unrelated to identifier uniqueness' do
+      invalid_contact = account.contacts.new(name: 'a' * 256)
+      invalid_contact.validate
+      error = ActiveRecord::RecordInvalid.new(invalid_contact)
+      contacts = web_widget.account.contacts
+      allow(contacts).to receive(:find_or_create_by!).and_raise(error)
+
+      expect { service.perform }.to raise_error(satisfy { |raised| raised.equal?(error) })
+      expect(contacts).to have_received(:find_or_create_by!).once
+    end
+
     it 'does not merge a cached guest whose identifier has changed before the lock' do
       conversation = create(:conversation, account: account, inbox: web_widget.inbox, contact: guest, contact_inbox: contact_inbox)
       expect(contact_inbox.contact.identifier).to be_nil

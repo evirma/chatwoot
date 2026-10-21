@@ -176,3 +176,6 @@ bundle exec rubocop app/services/widget/bootstrap_contact_service.rb app/control
 ```
 
 Локально `ruby -c` доступен; RSpec и RuboCop требуют проектный Ruby 3.4.4 (на машине Ruby 2.6.10, `rbenv` отсутствует). RSpec с собранными Vite-ассетами запускает координатор в контейнере. JavaScript не менялся, Vitest/eslint не требуются. Новых зависимостей и изменений `enterprise/` нет.
+
+F9 review follow-up: bootstrap retries the full transaction once for deadlocks and identifier uniqueness races; HTTP/live cross-channel history requires a verified contact inbox and an identifier; setUser verifies the session only after successful identification.
+RSpec regressions cover retry success/exhaustion, unrelated validation errors, unverified history recipients and failed identification (422); RSpec is run by the coordinator.

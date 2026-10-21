@@ -20,9 +20,10 @@ class Api::V1::Widget::ContactsController < Api::V1::Widget::BaseController
       contact = @contact
     end
 
-    @contact_inbox.update(hmac_verified: true) if should_verify_hmac?
-
     identify_contact(contact)
+
+    # EVIRMA: A failed identification must never persist a verified guest session.
+    @contact_inbox.update(hmac_verified: true) if should_verify_hmac?
   end
 
   # TODO : clean up this with proper routes delete contacts/custom_attributes
