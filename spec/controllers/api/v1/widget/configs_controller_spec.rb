@@ -92,6 +92,24 @@ RSpec.describe '/api/v1/widget/config', type: :request do
         expect(response.parsed_body['contact']['id']).not_to eq(contact.id)
       end
 
+      # EVIRMA: A second tab may merge the guest after this request has resolved its token.
+      it 'returns the user token when another bootstrap has already merged the cached guest' do
+        identified_contact = create(:contact, account: account, identifier: identifier)
+        verified_link = create(:contact_inbox, contact: identified_contact, inbox: web_widget.inbox, hmac_verified: true)
+        allow(Widget::BootstrapContactService).to receive(:new).and_wrap_original do |original, **attributes|
+          service = original.call(**attributes)
+          ContactMergeAction.new(account: account, base_contact: identified_contact, mergee_contact: contact).perform
+          service
+        end
+
+        post '/api/v1/widget/config', params: params, headers: { 'X-Auth-Token' => token }, as: :json
+
+        expect(response).to have_http_status(:success)
+        expect(response.parsed_body['contact']['id']).to eq(identified_contact.id)
+        decoded = Widget::TokenService.new(token: response.parsed_body['website_channel_config']['auth_token']).decode_token
+        expect(decoded).to include(source_id: verified_link.source_id, inbox_id: web_widget.inbox.id)
+      end
+
       # EVIRMA: A first login can reuse the guest's email without losing its conversation.
       it 'creates an identified contact and merges a guest that already has the same email' do
         contact.update!(email: user[:email])
@@ -149,7 +167,7 @@ RSpec.describe '/api/v1/widget/config', type: :request do
 
         expect do
           patch '/api/v1/widget/contact/set_user', params: user.merge(website_token: web_widget.website_token),
-                                                  headers: { 'X-Auth-Token' => body['website_channel_config']['auth_token'] }, as: :json
+                                                   headers: { 'X-Auth-Token' => body['website_channel_config']['auth_token'] }, as: :json
         end.not_to change(Contact, :count)
 
         expect(response).to have_http_status(:success)
@@ -198,6 +216,16 @@ RSpec.describe '/api/v1/widget/config', type: :request do
           expect(contact.reload.identifier).to be_nil
           expect(contact_inbox.reload).not_to be_hmac_verified
         end
+
+        # EVIRMA: Exercise constant-time digest comparison, not just the length rejection.
+        it 'rejects an incorrect signature with the valid 64-character hex format' do
+          post '/api/v1/widget/config', params: params.deep_merge(user: { identifier_hash: '0' * 64 }), as: :json
+
+          expect(response).to have_http_status(:success)
+          expect(response.parsed_body['contact']['identifier']).to be_nil
+          expect(response.parsed_body['set_user_error']).to eq('error' => 'HMAC failed: Invalid Identifier Hash Provided')
+          expect(account.contacts.find_by(identifier: identifier)).to be_nil
+        end
       end
 
       context 'without a signature' do
@@ -221,6 +249,29 @@ RSpec.describe '/api/v1/widget/config', type: :request do
           expect(body['contact']['pubsub_token']).not_to eq(contact_inbox.pubsub_token)
           decoded = Widget::TokenService.new(token: body['website_channel_config']['auth_token']).decode_token
           expect(ContactInbox.find_by!(inbox_id: web_widget.inbox.id, source_id: decoded[:source_id])).not_to be_hmac_verified
+        end
+
+        # EVIRMA: A legacy verified guest is not proof of the unsigned user's identity.
+        it 'does not expose user conversations through a verified guest without the user signature' do
+          contact_inbox.update!(hmac_verified: true)
+          identified_contact = create(:contact, account: account, identifier: identifier)
+          verified_link = create(:contact_inbox, contact: identified_contact, inbox: web_widget.inbox, hmac_verified: true)
+          create(:conversation, account: account, inbox: web_widget.inbox, contact: identified_contact, contact_inbox: verified_link)
+
+          post '/api/v1/widget/config', params: params, headers: { 'X-Auth-Token' => token }, as: :json
+
+          expect(response).to have_http_status(:success)
+          expect(response.parsed_body['contact']['identifier']).to eq(identifier)
+          expect(contact.reload.identifier).to be_nil
+          auth_token = response.parsed_body['website_channel_config']['auth_token']
+          decoded = Widget::TokenService.new(token: auth_token).decode_token
+          expect(ContactInbox.find_by!(inbox_id: web_widget.inbox.id, source_id: decoded[:source_id])).not_to be_hmac_verified
+
+          get '/api/v1/widget/conversations', params: { website_token: web_widget.website_token },
+                                              headers: { 'X-Auth-Token' => auth_token }
+
+          expect(response).to have_http_status(:success)
+          expect(response.parsed_body).to eq({})
         end
       end
     end

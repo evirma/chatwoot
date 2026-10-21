@@ -153,3 +153,26 @@ bundle exec rubocop app/controllers/widgets_controller.rb app/controllers/api/v1
 ```
 
 Новых зависимостей и изменений схемы данных нет, `enterprise/` не меняется.
+
+## F9: устранение гонок гостевого bootstrap после ревью
+
+| Файл | Место и назначение правки | Контракт / поведение | Риск при обновлении upstream | Проверка |
+| --- | --- | --- | --- | --- |
+| `app/services/widget/bootstrap_contact_service.rb` | EVIRMA: блокировка и повторное чтение гостя до поиска пользователя и слияния. | Два подписанных bootstrap одного гостя сериализуются в транзакции. Слияние разрешено только при пустом либо совпадающем подписанном identifier после блокировки. Уже удалённый/слитый гость не вызывает ошибку: выдаётся проверенная связь пользователя. `hmac_verified` устанавливается только на свежепрочитанной связи итогового пользователя; исходная каноническая связь сохраняет приоритет. Неподписанный вход с ранее проверенным гостевым токеном получает новую непроверенную сессию без доступа к проверенной истории пользователя. | Средний: сохранить блокировку до создания пользователя, повторную проверку identifier и принадлежность связи при изменениях слияния. | Спека сервиса: устаревший identifier, пометка связи после слияния, удалённый гость и его связь. Request-спеки: слияние другой вкладкой и отсутствие доступа к чужой истории без подписи. |
+| `app/controllers/api/v1/widget/configs_controller.rb`, `spec/controllers/api/v1/widget/configs_controller_spec.rb` | EVIRMA: разделение проверки подписи и обработки ошибки без изменения API; исправление выравнивания hash. | Публичный контракт F9 сохранён. Неверная подпись, включая 64 hex-символа, возвращает гостевой контакт и прежний `set_user_error`. | Низкий. | Дополнительный пример с неверным digest правильной длины; RuboCop без отключений cop. |
+
+Пример `defers contact creation` в `spec/controllers/widgets_controller_spec.rb` проверяет отсутствие изменения количества контактов именно при `bootstrap=true`, успешный GET и флаг отложенной загрузки. Код GET и шаблон не менялись: известные падения с `ViteRuby::MissingExecutableError` относятся к отсутствующим собранным ассетам окружения.
+
+Проверки исправлений:
+
+```sh
+ruby -c app/services/widget/bootstrap_contact_service.rb
+ruby -c app/controllers/api/v1/widget/configs_controller.rb
+ruby -c spec/services/widget/bootstrap_contact_service_spec.rb
+ruby -c spec/controllers/api/v1/widget/configs_controller_spec.rb
+eval "$(rbenv init -)"
+bundle exec rspec spec/services/widget/bootstrap_contact_service_spec.rb spec/controllers/api/v1/widget/configs_controller_spec.rb spec/controllers/widgets_controller_spec.rb
+bundle exec rubocop app/services/widget/bootstrap_contact_service.rb app/controllers/api/v1/widget/configs_controller.rb spec/services/widget/bootstrap_contact_service_spec.rb spec/controllers/api/v1/widget/configs_controller_spec.rb
+```
+
+Локально `ruby -c` доступен; RSpec и RuboCop требуют проектный Ruby 3.4.4 (на машине Ruby 2.6.10, `rbenv` отсутствует). RSpec с собранными Vite-ассетами запускает координатор в контейнере. JavaScript не менялся, Vitest/eslint не требуются. Новых зависимостей и изменений `enterprise/` нет.

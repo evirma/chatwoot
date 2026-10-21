@@ -40,17 +40,23 @@ class Api::V1::Widget::ConfigsController < Api::V1::Widget::BaseController
 
     user = permitted_params.require(:user).to_h.symbolize_keys
     verify_hmac = user[:identifier_hash].present? || @web_widget.hmac_mandatory?
-    if user[:identifier].blank? || (verify_hmac && !valid_widget_hmac?(@web_widget, user[:identifier], user[:identifier_hash]))
-      @set_user_error = { error: 'HMAC failed: Invalid Identifier Hash Provided' }
-      @contact = @contact_inbox = nil if @contact&.identifier.present?
-      return
-    end
+    return reject_bootstrap_user unless valid_bootstrap_user?(user, verify_hmac)
 
     @contact_inbox = Widget::BootstrapContactService.new(
       web_widget: @web_widget, user: user, contact_inbox: @contact_inbox,
       hmac_verified: verify_hmac, additional_attributes: additional_attributes
     ).perform
     @contact = @contact_inbox.contact
+  end
+
+  # EVIRMA: Keep request validation separate from bootstrap contact resolution.
+  def valid_bootstrap_user?(user, verify_hmac)
+    user[:identifier].present? && (!verify_hmac || valid_widget_hmac?(@web_widget, user[:identifier], user[:identifier_hash]))
+  end
+
+  def reject_bootstrap_user
+    @set_user_error = { error: 'HMAC failed: Invalid Identifier Hash Provided' }
+    @contact = @contact_inbox = nil if @contact&.identifier.present?
   end
 
   # EVIRMA: Bootstrap identity is accepted only as a nested request-body object.
