@@ -15,6 +15,8 @@ const state = {
   skipHome: false,
   // EVIRMA: Messenger actions are opt-in for the embedding host.
   messengerButtons: [],
+  // EVIRMA: Keep creation defaults separate from mutable pending conversation metadata.
+  conversationCustomAttributes: undefined,
   hideMessageBubble: false,
   isCampaignViewClicked: false,
   showUnreadMessagesDialog: true,
@@ -38,6 +40,16 @@ const state = {
 
 export const getters = {
   getAppConfig: $state => $state,
+  // EVIRMA: Apply host defaults only until a conversation exists.
+  getInitialConversationCustomAttributes: (
+    $state,
+    _getters,
+    _rootState,
+    rootGetters
+  ) =>
+    rootGetters['conversationAttributes/getConversationParams'].id
+      ? undefined
+      : $state.conversationCustomAttributes,
   isRightAligned: $state => $state.position === 'right',
   getHideMessageBubble: $state => $state.hideMessageBubble,
   getIsWidgetOpen: $state => $state.isWidgetOpen,
@@ -69,6 +81,8 @@ export const actions = {
       skipHome = false,
       // EVIRMA: Receive the host messenger preference through config-set.
       messengerButtons = [],
+      // EVIRMA: Receive one-time conversation creation metadata from the host.
+      conversationCustomAttributes,
       showUnreadMessagesDialog,
       widgetStyle = 'rounded',
       darkMode = 'light',
@@ -88,6 +102,8 @@ export const actions = {
       skipHome: skipHome === true,
       // EVIRMA: Share messenger actions with both native widget headers.
       messengerButtons,
+      // EVIRMA: Preserve defaults across prechat state resets.
+      conversationCustomAttributes,
       hideMessageBubble: !!hideMessageBubble,
       position: position || 'right',
       showPopoutButton: !!showPopoutButton,
@@ -135,6 +151,8 @@ export const mutations = {
     $state.skipHome = data.skipHome;
     // EVIRMA: Retain the configured messenger actions in the widget store.
     $state.messengerButtons = data.messengerButtons;
+    // EVIRMA: Store host metadata for each conversation creation entry point.
+    $state.conversationCustomAttributes = data.conversationCustomAttributes;
     $state.showPopoutButton = data.showPopoutButton;
     $state.position = data.position;
     $state.hideMessageBubble = data.hideMessageBubble;

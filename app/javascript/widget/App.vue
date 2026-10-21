@@ -28,6 +28,9 @@ import {
 } from 'widget/composables/useAvailability';
 import { SDK_SET_BUBBLE_VISIBILITY } from '../shared/constants/sharedFrameEvents';
 import { emitter } from 'shared/helpers/mitt';
+// EVIRMA: Campaign previews use the same host message event as operator replies.
+import { CHATWOOT_ON_MESSAGE } from './constants/sdkEvents';
+import { MESSAGE_TYPE } from 'shared/constants/messages';
 
 // EVIRMA: Refresh availability without relying on presence websocket events.
 const AGENT_AVAILABILITY_REFRESH_INTERVAL = 60 * 1000;
@@ -259,6 +262,13 @@ export default {
       emitter.on('snooze-campaigns', () => {
         const expireBy = addHours(new Date(), 1);
         this.campaignsSnoozedTill = Number(expireBy);
+        // EVIRMA: Publish the exact widget snooze mark for host persistence in every mode.
+        if (this.isIFrame) {
+          IFrameHelper.sendMessage({
+            event: 'setCampaignReadOn',
+            till: this.campaignsSnoozedTill,
+          });
+        }
       });
     },
     setCampaignView() {
@@ -270,6 +280,23 @@ export default {
         !messageCount &&
         !shouldSnoozeCampaign;
       if (this.isIFrame && isCampaignReadyToExecute) {
+        // EVIRMA: Deliver hidden campaign previews to the host without opening the widget.
+        if (this.hideMessageBubble && !this.showUnreadMessagesDialog) {
+          IFrameHelper.sendMessage({
+            event: 'onEvent',
+            eventIdentifier: CHATWOOT_ON_MESSAGE,
+            data: {
+              content: activeCampaign.message,
+              sender: activeCampaign.sender,
+              sender_type: 'User',
+              message_type: MESSAGE_TYPE.OUTGOING,
+              attachments: [],
+              campaignId: activeCampaign.id,
+              is_campaign: true,
+            },
+          });
+          return;
+        }
         this.router.replace({ name: 'campaigns' }).then(() => {
           this.setIframeHeight(true);
           IFrameHelper.sendMessage({ event: 'setUnreadMode' });
@@ -335,7 +362,11 @@ export default {
           }
           this.setLocale(message.locale);
           this.setBubbleLabel();
-          this.fetchOldConversations().then(() => this.setUnreadView());
+          this.fetchOldConversations().then(() => {
+            // EVIRMA: Publish initial unread state even when the loaded count stays at zero.
+            this.handleUnreadNotificationDot();
+            this.setUnreadView();
+          });
           this.fetchAvailableAgents(websiteToken);
           this.setAppConfig(message);
           this.$store.dispatch('contacts/get');

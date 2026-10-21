@@ -1,3 +1,4 @@
+// EVIRMA: Supply root store getters used by conversation creation defaults.
 import { actions } from '../../conversation/actions';
 import getUuid from '../../../../helpers/uuid';
 import { API } from 'widget/helpers/axios';
@@ -32,7 +33,7 @@ describe('#actions', () => {
         },
       }));
       await actions.createConversation(
-        { commit },
+        { commit, rootGetters: {} },
         { contact: {}, message: 'This is a test message' }
       );
       expect(commit.mock.calls).toEqual([
@@ -164,7 +165,7 @@ describe('#actions', () => {
       const state = { pendingCustomAttributes: {}, pendingLabels: [] };
 
       actions.sendAttachment(
-        { commit, dispatch, state },
+        { commit, dispatch, state, rootGetters: {} },
         { attachment, replyTo: 135 }
       );
       spy.mockRestore();

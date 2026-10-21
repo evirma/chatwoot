@@ -4,6 +4,8 @@ import {
   getBubbleView,
   getDarkMode,
   getWidgetStyle,
+  // EVIRMA: Validate optional external attribution at both SDK entry points.
+  getPageUrl,
 } from '../sdk/settingsHelper';
 import {
   computeHashForUserData,
@@ -67,8 +69,14 @@ const runSDK = ({ baseUrl, websiteToken }) => {
     ),
     conversationToken: chatwootSettings.conversationToken,
     // EVIRMA: Carry optional host page and messenger settings into the iframe.
-    pageUrl: chatwootSettings.pageUrl,
+    pageUrl:
+      chatwootSettings.pageUrl === undefined
+        ? undefined
+        : getPageUrl(chatwootSettings.pageUrl),
     messengerButtons: chatwootSettings.messengerButtons || [],
+    // EVIRMA: Keep campaign persistence and conversation creation metadata under host control.
+    campaignsSnoozedTill: chatwootSettings.campaignsSnoozedTill,
+    conversationCustomAttributes: chatwootSettings.conversationCustomAttributes,
     hasLoaded: false,
     hideMessageBubble: chatwootSettings.hideMessageBubble || false,
     // EVIRMA: Allow the host page to hide both widget headers.
@@ -213,7 +221,10 @@ const runSDK = ({ baseUrl, websiteToken }) => {
 
     // EVIRMA: Update campaign matching and conversation referrers immediately.
     setPageUrl(url) {
-      window.$chatwoot.pageUrl = url;
+      // EVIRMA: Ignore invalid updates while preserving the last valid page.
+      const pageUrl = getPageUrl(url);
+      if (pageUrl === undefined) return;
+      window.$chatwoot.pageUrl = pageUrl;
       IFrameHelper.events.onLocationChange({});
     },
 

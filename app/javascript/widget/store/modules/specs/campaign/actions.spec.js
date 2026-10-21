@@ -1,3 +1,4 @@
+// EVIRMA: Supply root store getters used by campaign conversation defaults.
 import { API } from 'widget/helpers/axios';
 import { actions } from '../../campaign';
 import { campaigns } from './data';
@@ -208,7 +209,7 @@ describe('#actions', () => {
     it('sends correct actions if  execute campaign API is success', async () => {
       const params = { campaignId: 12, websiteToken: 'XDsafmADasd' };
       API.post.mockResolvedValue({});
-      await actions.executeCampaign({ commit }, params);
+      await actions.executeCampaign({ commit, rootGetters: {} }, params);
       expect(commit.mock.calls).toEqual([
         [
           'conversation/setConversationUIFlag',
@@ -235,7 +236,7 @@ describe('#actions', () => {
     it('sends correct actions if  execute campaign API is failed', async () => {
       const params = { campaignId: 12, websiteToken: 'XDsafmADasd' };
       API.post.mockRejectedValue({ message: 'Authentication required' });
-      await actions.executeCampaign({ commit }, params);
+      await actions.executeCampaign({ commit, rootGetters: {} }, params);
       expect(commit.mock.calls).toEqual([
         [
           'conversation/setConversationUIFlag',

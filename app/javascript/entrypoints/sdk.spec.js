@@ -123,6 +123,13 @@ describe('$chatwoot external host configuration', () => {
         websiteToken: 'website-token',
       });
       window.$chatwoot.setUser('customer', { name: 'Customer' });
+      // EVIRMA: Repeated external identification must still reach the server.
+      window.$chatwoot.setUser('customer', { name: 'Customer' });
+      expect(
+        IFrameHelper.sendMessage.mock.calls.filter(
+          ([event]) => event === 'set-user'
+        )
+      ).toHaveLength(2);
       expect(window.$chatwoot.useExternalConversationToken).toBe(true);
       expect(window.$chatwoot.conversationToken).toBe(conversationToken);
       expect(getCookie).not.toHaveBeenCalled();
@@ -176,5 +183,43 @@ describe('$chatwoot external host configuration', () => {
     });
     expect(window.$chatwoot.useExternalConversationToken).toBe(false);
     expect(window.$chatwoot.messengerButtons).toEqual([]);
+  });
+
+  // EVIRMA: Invalid host page URLs cannot break widget initialization or replace valid attribution.
+  it.each(['/orders', 'not a URL', '', null, 42])(
+    'ignores invalid pageUrl=%s',
+    pageUrl => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      window.chatwootSettings = { pageUrl };
+      window.chatwootSDK.run({
+        baseUrl: 'https://support.evirma.ru',
+        websiteToken: 'website',
+      });
+      expect(window.$chatwoot.pageUrl).toBeUndefined();
+      expect(IFrameHelper.createFrame).toHaveBeenCalled();
+      window.$chatwoot.setPageUrl('https://market.example/orders');
+      IFrameHelper.events.onLocationChange.mockClear();
+      window.$chatwoot.setPageUrl(pageUrl);
+      expect(window.$chatwoot.pageUrl).toBe('https://market.example/orders');
+      expect(IFrameHelper.events.onLocationChange).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  // EVIRMA: Creation metadata and external campaign persistence survive SDK setup.
+  it('retains creation attributes and campaign snooze settings', () => {
+    window.chatwootSettings = {
+      conversationToken: null,
+      campaignsSnoozedTill: 1234567890,
+      conversationCustomAttributes: { order: '42' },
+    };
+    window.chatwootSDK.run({
+      baseUrl: 'https://support.evirma.ru',
+      websiteToken: 'website',
+    });
+    expect(window.$chatwoot.campaignsSnoozedTill).toBe(1234567890);
+    expect(window.$chatwoot.conversationCustomAttributes).toEqual({
+      order: '42',
+    });
   });
 });

@@ -14,10 +14,17 @@ import { ON_CONVERSATION_CREATED } from 'widget/constants/widgetBusEvents';
 import { createTemporaryMessage, getNonDeletedMessages } from './helpers';
 import { emitter } from 'shared/helpers/mitt';
 export const actions = {
-  createConversation: async ({ commit, dispatch }, params) => {
+  createConversation: async ({ commit, dispatch, rootGetters }, params) => {
     commit('setConversationUIFlag', { isCreating: true });
     try {
-      const { data } = await createConversationAPI(params);
+      // EVIRMA: Prechat values override host defaults in the creation request.
+      const { data } = await createConversationAPI({
+        ...params,
+        customAttributes: {
+          ...rootGetters['appConfig/getInitialConversationCustomAttributes'],
+          ...params.customAttributes,
+        },
+      });
       const { messages } = data;
       const [message = {}] = messages;
       commit('pushMessageToConversation', message);
@@ -41,21 +48,23 @@ export const actions = {
     });
   },
   sendMessageWithData: async (
-    { commit },
+    { commit, rootGetters },
     { message, pendingCustomAttributes = {}, pendingLabels = [] }
   ) => {
     const { id, content, replyTo, meta = {} } = message;
+    // EVIRMA: Initial sends and retries share the same conversation creation defaults.
+    const customAttributes = {
+      ...rootGetters['appConfig/getInitialConversationCustomAttributes'],
+      ...pendingCustomAttributes,
+    };
     const hasPendingMetadata =
-      Object.keys(pendingCustomAttributes).length > 0 ||
-      pendingLabels.length > 0;
+      Object.keys(customAttributes).length > 0 || pendingLabels.length > 0;
 
     commit('pushMessageToConversation', message);
     commit('updateMessageMeta', { id, meta: { ...meta, error: '' } });
     try {
       const { data } = await sendMessageAPI(content, replyTo, {
-        customAttributes: hasPendingMetadata
-          ? pendingCustomAttributes
-          : undefined,
+        customAttributes: hasPendingMetadata ? customAttributes : undefined,
         labels: hasPendingMetadata ? pendingLabels : undefined,
       });
       if (hasPendingMetadata) {
@@ -78,7 +87,10 @@ export const actions = {
     commit('setLastMessageId');
   },
 
-  sendAttachment: async ({ commit, state: conversationState }, params) => {
+  sendAttachment: async (
+    { commit, state: conversationState, rootGetters },
+    params
+  ) => {
     const {
       attachment: { thumbUrl, fileType },
       meta = {},
@@ -93,7 +105,12 @@ export const actions = {
       attachments: [attachment],
       replyTo: params.replyTo,
     });
-    const { pendingCustomAttributes, pendingLabels } = conversationState;
+    // EVIRMA: The first attachment must carry the same creation defaults as text.
+    const pendingCustomAttributes = {
+      ...rootGetters['appConfig/getInitialConversationCustomAttributes'],
+      ...conversationState.pendingCustomAttributes,
+    };
+    const { pendingLabels } = conversationState;
     const hasPendingMetadata =
       Object.keys(pendingCustomAttributes).length > 0 ||
       pendingLabels.length > 0;

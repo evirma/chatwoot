@@ -8,6 +8,8 @@ import agent from '../store/modules/agent';
 import appConfig from '../store/modules/appConfig';
 import { IFrameHelper } from '../helpers/utils';
 import { emitter } from 'shared/helpers/mitt';
+// EVIRMA: Verify unread events using the widget's actual counting and read-state rules.
+import conversation from '../store/modules/conversation';
 
 describe('App availability-changed', () => {
   let store;
@@ -39,17 +41,25 @@ describe('App availability-changed', () => {
         },
         conversation: {
           namespaced: true,
+          state: { conversations: {}, meta: {} },
           getters: {
             getConversationSize: () => 0,
             getIsFetchingList: () => false,
-            getMessageCount: () => 0,
-            getUnreadMessageCount: () => 0,
+            getMessageCount: conversation.getters.getMessageCount,
+            getUnreadMessageCount: conversation.getters.getUnreadMessageCount,
           },
+          mutations: conversation.mutations,
           actions: { fetchOldConversations: vi.fn() },
         },
         campaign: {
           namespaced: true,
-          getters: { getActiveCampaign: () => ({}) },
+          state: { activeCampaign: {} },
+          getters: { getActiveCampaign: state => state.activeCampaign },
+          mutations: {
+            setActiveCampaign: (state, value) => {
+              state.activeCampaign = value;
+            },
+          },
         },
         conversationAttributes: {
           namespaced: true,
@@ -302,5 +312,118 @@ describe('App availability-changed', () => {
       })
     );
     delete window.referrerURL;
+  });
+
+  // EVIRMA: A closed hidden widget must publish initial zero, new replies and read receipts.
+  it('reports initial unread state and unread changes with both launcher surfaces disabled', async () => {
+    store.registerModule('contacts', {
+      namespaced: true,
+      actions: { get: vi.fn() },
+    });
+    // EVIRMA: Keep visibility unchanged during config-set so only initial loading publishes zero.
+    await store.dispatch('appConfig/setAppConfig', {
+      hideMessageBubble: true,
+      showUnreadMessagesDialog: false,
+    });
+    await nextTick();
+    postMessage.mockClear();
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: 'chatwoot-widget:{"event":"config-set","hideMessageBubble":true,"showUnreadMessagesDialog":false}',
+      })
+    );
+    await nextTick();
+    await nextTick();
+    expect(postMessage).toHaveBeenCalledWith(
+      'chatwoot-widget:{"event":"handleNotificationDot","unreadMessageCount":0}',
+      '*'
+    );
+    postMessage.mockClear();
+    store.commit('conversation/pushMessageToConversation', {
+      id: 1,
+      message_type: 1,
+      created_at: 10,
+    });
+    await nextTick();
+    expect(postMessage).toHaveBeenCalledWith(
+      'chatwoot-widget:{"event":"handleNotificationDot","unreadMessageCount":1}',
+      '*'
+    );
+    store.commit('conversation/setMetaUserLastSeenAt', 11);
+    await nextTick();
+    expect(postMessage).toHaveBeenLastCalledWith(
+      'chatwoot-widget:{"event":"handleNotificationDot","unreadMessageCount":0}',
+      '*'
+    );
+    expect(store.state.appConfig.isWidgetOpen).toBe(false);
+    expect(router.currentRoute.value.name).toBe('home');
+  });
+
+  // EVIRMA: Eligible timer campaigns reach the host without routing to a popup.
+  it('publishes a campaign message without opening the hidden widget', async () => {
+    await store.dispatch('appConfig/setAppConfig', {
+      hideMessageBubble: true,
+      showUnreadMessagesDialog: false,
+    });
+    postMessage.mockClear();
+    const sender = { id: 7, name: 'Support' };
+    store.commit('campaign/setActiveCampaign', {
+      id: 42,
+      message: 'Welcome',
+      sender,
+    });
+    await nextTick();
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith(
+      `chatwoot-widget:${JSON.stringify({
+        event: 'onEvent',
+        eventIdentifier: 'chatwoot:on-message',
+        data: {
+          content: 'Welcome',
+          sender,
+          sender_type: 'User',
+          message_type: 1,
+          attachments: [],
+          campaignId: 42,
+          is_campaign: true,
+        },
+      })}`,
+      '*'
+    );
+    expect(store.state.appConfig.isWidgetOpen).toBe(false);
+    expect(router.currentRoute.value.name).toBe('home');
+  });
+
+  it.each(['snoozed', 'has messages'])(
+    'does not notify a campaign when %s',
+    async condition => {
+      await store.dispatch('appConfig/setAppConfig', {
+        hideMessageBubble: true,
+        showUnreadMessagesDialog: false,
+      });
+      if (condition === 'snoozed')
+        wrapper.vm.setCampaignReadData(Date.now() + 60 * 60 * 1000);
+      else
+        store.commit('conversation/pushMessageToConversation', {
+          id: 1,
+          message_type: 0,
+        });
+      await nextTick();
+      postMessage.mockClear();
+      store.commit('campaign/setActiveCampaign', {
+        id: 42,
+        message: 'Welcome',
+      });
+      await nextTick();
+      expect(postMessage).not.toHaveBeenCalled();
+    }
+  );
+
+  // EVIRMA: The snooze mark stored by the host must match the widget's mark exactly.
+  it('sends every local campaign snooze to the host', () => {
+    emitter.emit('snooze-campaigns');
+    expect(postMessage).toHaveBeenLastCalledWith(
+      `chatwoot-widget:${JSON.stringify({ event: 'setCampaignReadOn', till: wrapper.vm.campaignsSnoozedTill })}`,
+      '*'
+    );
   });
 });

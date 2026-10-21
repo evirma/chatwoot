@@ -3,6 +3,8 @@ import Cookies from 'js-cookie';
 import { IFrameHelper } from '../IFrameHelper';
 // EVIRMA: Exercise the external-token error path through the existing error contract.
 import { SET_USER_ERROR } from '../../widget/constants/errorTypes';
+// EVIRMA: Exercise public URL validation together with the actual loaded handler.
+import { getPageUrl } from '../settingsHelper';
 
 describe('IFrameHelper EVIRMA messages', () => {
   let iframe;
@@ -45,7 +47,7 @@ describe('IFrameHelper EVIRMA messages', () => {
 
     expect(postMessage).toHaveBeenCalledWith(
       expect.stringContaining(`"hideHeader":${hideHeader}`),
-      '*'
+      'https://support.evirma.ru'
     );
     const message = JSON.parse(
       postMessage.mock.calls[0][0].replace('chatwoot-widget:', '')
@@ -273,5 +275,90 @@ describe('IFrameHelper EVIRMA messages', () => {
       referrerURL: 'https://site.example/page',
       referrerHost: 'site.example',
     });
+  });
+
+  // EVIRMA: Outgoing identity messages must target only the configured widget origin.
+  it('targets the base URL origin, including its port', () => {
+    window.$chatwoot.baseUrl = 'https://support.example:8443/chat';
+    IFrameHelper.sendMessage('set-user', { identifier: 'customer' });
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith(
+      'chatwoot-widget:{"event":"set-user","identifier":"customer"}',
+      'https://support.example:8443'
+    );
+  });
+
+  // EVIRMA: External mode must not touch campaign cookies, even when snoozing repeatedly.
+  it.each([false, true])(
+    'publishes campaign snoozes with external mode=%s',
+    external => {
+      window.$chatwoot.useExternalConversationToken = external;
+      window.$chatwoot.campaignsSnoozedTill = Date.now() + 1000;
+      window.$chatwoot.conversationCustomAttributes = { order: '42' };
+      const getCookie = vi.spyOn(Cookies, 'get').mockReturnValue('1234');
+      const setCookie = vi.spyOn(Cookies, 'set').mockImplementation(() => {});
+      const listener = vi.fn();
+      window.addEventListener('chatwoot:campaigns-snoozed', listener);
+      vi.spyOn(IFrameHelper, 'onLoad').mockImplementation(() => {});
+      vi.spyOn(IFrameHelper, 'toggleCloseButton').mockImplementation(() => {});
+      IFrameHelper.events.loaded({
+        config: { authToken: 'token', channelConfig: { widgetColor: '#000' } },
+      });
+      expect(
+        JSON.parse(postMessage.mock.calls[0][0].replace('chatwoot-widget:', ''))
+      ).toMatchObject({
+        campaignsSnoozedTill: external
+          ? window.$chatwoot.campaignsSnoozedTill
+          : '1234',
+        conversationCustomAttributes: { order: '42' },
+      });
+      IFrameHelper.events.setCampaignReadOn();
+      IFrameHelper.events.setCampaignReadOn();
+      window.removeEventListener('chatwoot:campaigns-snoozed', listener);
+      expect(listener).toHaveBeenCalledTimes(2);
+      expect(listener.mock.calls[0][0].detail.till).toBeGreaterThan(Date.now());
+      expect(window.$chatwoot.campaignsSnoozedTill).toBe(
+        listener.mock.calls[1][0].detail.till
+      );
+      expect(getCookie).toHaveBeenCalledTimes(external ? 0 : 1);
+      expect(setCookie).toHaveBeenCalledTimes(external ? 0 : 3);
+    }
+  );
+
+  // EVIRMA: A hidden launcher still publishes unread changes, including a read receipt.
+  it('publishes unread counts when the bubble is hidden', () => {
+    window.$chatwoot.hideMessageBubble = true;
+    const listener = vi.fn();
+    window.addEventListener('chatwoot:unread-count', listener);
+    [0, 2, 0].forEach(unreadMessageCount => {
+      IFrameHelper.events.handleNotificationDot({ unreadMessageCount });
+    });
+    window.removeEventListener('chatwoot:unread-count', listener);
+    expect(listener.mock.calls.map(([event]) => event.detail)).toEqual([
+      { count: 0 },
+      { count: 2 },
+      { count: 0 },
+    ]);
+  });
+
+  // EVIRMA: Invalid optional attribution must still send config, reveal the frame and emit ready.
+  it('continues loaded initialization after ignoring an invalid page URL', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    window.$chatwoot.pageUrl = getPageUrl('/orders');
+    const ready = vi.fn();
+    window.addEventListener('chatwoot:ready', ready);
+    const onLoad = vi
+      .spyOn(IFrameHelper, 'onLoad')
+      .mockImplementation(() => {});
+    vi.spyOn(IFrameHelper, 'toggleCloseButton').mockImplementation(() => {});
+    IFrameHelper.events.loaded({
+      config: { authToken: 'token', channelConfig: { widgetColor: '#000' } },
+    });
+    window.removeEventListener('chatwoot:ready', ready);
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"config-set"'),
+      'https://support.evirma.ru'
+    );
+    expect(onLoad).toHaveBeenCalledOnce();
+    expect(ready).toHaveBeenCalledOnce();
   });
 });

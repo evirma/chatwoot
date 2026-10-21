@@ -25,9 +25,7 @@ export default {
   methods: {
     closeFullView() {
       if (IFrameHelper.isIFrame()) {
-        IFrameHelper.sendMessage({
-          event: 'setCampaignReadOn',
-        });
+        // EVIRMA: The shared snooze listener publishes the exact mark for persistence.
         IFrameHelper.sendMessage({ event: 'toggleBubble' });
         emitter.emit('snooze-campaigns');
       }

@@ -48,13 +48,28 @@ const updateAuthCookie = (token, baseDomain = '') => {
   }
 };
 
-const updateCampaignReadStatus = baseDomain => {
-  const expireBy = new Date(Date.now() + 60 * 60 * 1000);
-  setCookieWithDomain('cw_snooze_campaigns_till', Number(expireBy), {
-    expires: expireBy,
-    baseDomain,
+// EVIRMA: Reuse the widget mark so host and widget agree on the exact expiry.
+const updateCampaignReadStatus = (
+  baseDomain,
+  till = Date.now() + 60 * 60 * 1000
+) => {
+  const expireBy = new Date(till);
+  // EVIRMA: Publish every snooze and keep external mode entirely cookie-free.
+  window.$chatwoot.campaignsSnoozedTill = till;
+  dispatchWindowEvent({
+    eventName: 'chatwoot:campaigns-snoozed',
+    data: { till },
   });
+  if (!window.$chatwoot.useExternalConversationToken) {
+    setCookieWithDomain('cw_snooze_campaigns_till', till, {
+      expires: expireBy,
+      baseDomain,
+    });
+  }
 };
+
+// EVIRMA: Use the same trusted origin for incoming and outgoing iframe messages.
+const getWidgetOrigin = () => new URL(window.$chatwoot.baseUrl).origin;
 
 export const IFrameHelper = {
   getUrl({ baseUrl, websiteToken }) {
@@ -117,13 +132,13 @@ export const IFrameHelper = {
     const element = IFrameHelper.getAppFrame();
     element.contentWindow.postMessage(
       `chatwoot-widget:${JSON.stringify({ event: key, ...value })}`,
-      '*'
+      getWidgetOrigin()
     );
   },
   initPostMessageCommunication: () => {
     // EVIRMA: Preserve host listeners and trust only this widget's source and origin.
     const iframe = IFrameHelper.getAppFrame();
-    const origin = new URL(window.$chatwoot.baseUrl).origin;
+    const origin = getWidgetOrigin();
     window.addEventListener('message', e => {
       if (
         e.source !== iframe.contentWindow ||
@@ -183,7 +198,10 @@ export const IFrameHelper = {
     loaded: message => {
       updateAuthCookie(message.config.authToken, window.$chatwoot.baseDomain);
       window.$chatwoot.hasLoaded = true;
-      const campaignsSnoozedTill = Cookies.get('cw_snooze_campaigns_till');
+      // EVIRMA: External persistence restores snoozes from settings without reading cookies.
+      const campaignsSnoozedTill = window.$chatwoot.useExternalConversationToken
+        ? window.$chatwoot.campaignsSnoozedTill
+        : Cookies.get('cw_snooze_campaigns_till');
       IFrameHelper.sendMessage('config-set', {
         locale: window.$chatwoot.locale,
         position: window.$chatwoot.position,
@@ -194,6 +212,9 @@ export const IFrameHelper = {
         skipHome: window.$chatwoot.skipHome,
         // EVIRMA: Deliver optional messenger actions and the external page URL.
         messengerButtons: window.$chatwoot.messengerButtons,
+        // EVIRMA: Attach host metadata only when the widget creates a conversation.
+        conversationCustomAttributes:
+          window.$chatwoot.conversationCustomAttributes,
         ...IFrameHelper.getPageUrl(),
         showPopoutButton: window.$chatwoot.showPopoutButton,
         widgetStyle: window.$chatwoot.widgetStyle,
@@ -263,8 +284,9 @@ export const IFrameHelper = {
       updateAuthCookie(widgetAuthToken, window.$chatwoot.baseDomain);
     },
 
-    setCampaignReadOn() {
-      updateCampaignReadStatus(window.$chatwoot.baseDomain);
+    // EVIRMA: Older callers can still request a snooze without supplying a mark.
+    setCampaignReadOn({ till } = {}) {
+      updateCampaignReadStatus(window.$chatwoot.baseDomain, till);
     },
 
     postback(data) {
@@ -326,6 +348,11 @@ export const IFrameHelper = {
 
     resetUnreadMode: () => removeUnreadClass(),
     handleNotificationDot: event => {
+      // EVIRMA: The host needs unread counts even when its own launcher replaces the bubble.
+      dispatchWindowEvent({
+        eventName: 'chatwoot:unread-count',
+        data: { count: event.unreadMessageCount },
+      });
       if (window.$chatwoot.hideMessageBubble) {
         return;
       }
