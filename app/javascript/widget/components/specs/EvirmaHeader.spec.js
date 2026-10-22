@@ -189,14 +189,14 @@ describe('EVIRMA native headers', () => {
     expect(wrapper.text()).toContain(ru.REPLY_TIME.IN_A_FEW_MINUTES);
   });
 
-  it('uses the subtitle only with online agents when working hours are disabled', async () => {
+  it('shows the subtitle with and without online agents when working hours are disabled', async () => {
     window.chatwootWebChannel.workingHoursEnabled = false;
     await store.dispatch('appConfig/setAppConfig', {
       headerSubtitle: 'Поможем с заказом',
     });
     wrapper = mountHeader(ChatHeader);
-    expect(wrapper.text()).toContain('Мы вернемся как можно скорее');
-    expect(wrapper.text()).not.toContain('Поможем с заказом');
+    expect(wrapper.text()).toContain('Поможем с заказом');
+    expect(wrapper.text()).not.toContain('Мы вернемся как можно скорее');
 
     await wrapper.setProps({ availableAgents: [{ id: 1 }] });
     expect(wrapper.text()).toContain('Поможем с заказом');

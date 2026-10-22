@@ -27,7 +27,7 @@ const appConfig = useMapGetter('appConfig/getAppConfig');
 
 const router = useRouter();
 // EVIRMA: Advance the compact header when the shared app polling clock changes.
-const { isOnline } = useAvailability(
+const { isOnline, isOutOfOffice, opensAt } = useAvailability(
   availableAgents,
   inject(
     EVIRMA_AVAILABILITY_TIME,
@@ -71,9 +71,9 @@ const onBackButtonClick = () => {
               ${isOnline ? 'bg-n-teal-10' : 'hidden'}`"
           />
         </div>
-        <!-- EVIRMA: Replace reply time only online; preserve the scheduled F6 status offline. -->
+        <!-- EVIRMA: Replace the availability copy except for the scheduled F6 opening time. -->
         <span
-          v-if="isOnline && appConfig.headerSubtitle"
+          v-if="appConfig.headerSubtitle && !(isOutOfOffice && opensAt)"
           class="text-xs leading-4 text-n-slate-11 line-clamp-2 break-words"
         >
           {{ appConfig.headerSubtitle }}
