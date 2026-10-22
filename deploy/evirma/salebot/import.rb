@@ -124,7 +124,11 @@ class EvirmaSalebotImport
     end
 
     messages = prepare_messages(payload.fetch('messages'))
-    row = @report.fetch(id) { raise ArgumentError, "CSV has no client #{id}" }
+    # Clients created after the CSV report was exported are imported without funnel data.
+    row = @report.fetch(id) do
+      @stats[:clients_without_report] += 1
+      {}
+    end
     inbox = @inboxes.fetch(type)
     source_id = type == 1 ? platform_id : "max:#{platform_id}"
     key = [inbox.id, source_id]
@@ -179,6 +183,8 @@ class EvirmaSalebotImport
   def import_labels(funnel, tag)
     { 'funnel' => funnel, 'tag' => tag }.filter_map do |kind, value|
       next if value.blank?
+      # SaleBot keeps internal UUIDs in the tag field; they stay in salebot_tag but are not labels.
+      next if kind == 'tag' && value.to_s.match?(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/i)
 
       slug = value.to_s.downcase.gsub(/[^\p{L}\p{N}_-]+/, '-').gsub(/\A[-_]+|[-_]+\z/, '')
       if slug.empty?
@@ -237,12 +243,13 @@ class EvirmaSalebotImport
       raise ArgumentError, 'client_replica must be boolean' unless [true, false].include?(message.fetch('client_replica'))
 
       attachments = message['attachments']
-      attachments = [attachments] if attachments.is_a?(Hash)
+      # SaleBot sends no attachment as {} and an attachment as a URL string or {attachment_url: ...}.
+      attachments = attachments.blank? ? [] : [attachments] if attachments.is_a?(Hash)
       raise ArgumentError, 'attachments must be null, object or array' unless attachments.nil? || attachments.is_a?(Array)
       raise ArgumentError, 'message text must be a string or null' unless message['text'].nil? || message['text'].is_a?(String)
 
       links = (attachments || []).map do |attachment|
-        url = attachment.fetch('attachment_url')
+        url = attachment.is_a?(String) ? attachment : attachment.fetch('attachment_url')
         raise ArgumentError, 'attachment_url must be a non-empty string' unless url.is_a?(String) && url.present?
 
         "Вложение: #{url}"

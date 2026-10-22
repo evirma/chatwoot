@@ -23,6 +23,31 @@ RSpec.describe EvirmaSalebotImport do
 
   after { FileUtils.remove_entry(directory) }
 
+  it 'imports clients missing from the CSV report without funnel data', :aggregate_failures do
+    report = File.join(directory, 'report.csv')
+    File.write(report, File.readlines(fixtures.join('report.csv')).first)
+
+    summary = described_class.new(**options, report: report, dry_run: false).perform
+
+    # The fourth fixture client is skipped for its non-numeric platform_id before the report is read.
+    expect(summary.fetch(:totals).fetch(:clients_without_report)).to eq(3)
+    expect(account.contacts.count).to eq(3)
+    expect(account.contacts.find_by!("custom_attributes ->> 'salebot_client_id' = '101'").custom_attributes['salebot_funnel_state']).to be_nil
+  end
+
+  it 'keeps SaleBot UUID tags as an attribute without creating labels', :aggregate_failures do
+    report = File.join(directory, 'report.csv')
+    table = CSV.read(fixtures.join('report.csv'), headers: true, col_sep: ';', encoding: 'bom|utf-8')
+    table.each { |row| row['Тег'] = '2a4d3740-bd29-47af-a89c-e1e582a1b2c3' if row['ID'] == '101' }
+    File.write(report, table.to_csv(col_sep: ';'))
+
+    described_class.new(**options, report: report, dry_run: false).perform
+
+    contact = account.contacts.find_by!("custom_attributes ->> 'salebot_client_id' = '101'")
+    expect(contact.custom_attributes['salebot_tag']).to eq('2a4d3740-bd29-47af-a89c-e1e582a1b2c3')
+    expect(account.labels.pluck(:title)).not_to include(a_string_including('2a4d3740'))
+  end
+
   it 'imports contacts, channel identities, labels and chronologically ordered history', :aggregate_failures do
     summary = described_class.new(**options, dry_run: false).perform
 
@@ -191,6 +216,9 @@ RSpec.describe EvirmaSalebotImport do
     described_class.new(**options, dry_run: false).perform
 
     expect(account.messages.find_by!(source_id: 'salebot:2001')).to have_attributes(message_type: 'outgoing', sender: nil)
+    # SaleBot sends a bare URL string as an attachment and {} when there is none.
+    expect(account.messages.find_by!(source_id: 'salebot:2000').content).to eq("MAX question\nВложение: https://example.com/voice.ogg")
+    expect(account.messages.find_by!(source_id: 'salebot:2001').content).to eq('MAX answer')
   end
 
   it 'supports a limited trial through the CLI' do
