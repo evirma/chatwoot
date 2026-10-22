@@ -56,6 +56,8 @@ describe('Home skipHome', () => {
               {
                 id: 7,
                 content: 'Earlier message from MAX',
+                // EVIRMA: Match the required string enum supplied by Widget::ContactHistory.
+                message_type: 'outgoing',
                 channel: { name: 'Support MAX', label: 'max' },
                 created_at: 1700000000,
                 attachments: [],
@@ -139,9 +141,10 @@ describe('Home skipHome', () => {
       expect(wrapper.get('summary').text()).toBe(
         'EVIRMA_CONTACT_HISTORY.TITLE'
       );
-      expect(wrapper.get('details').text()).toContain(
-        'Earlier message from MAX'
-      );
+      // EVIRMA: ChatMessage is stubbed here; inspect its public message prop.
+      expect(
+        wrapper.getComponent({ name: 'ChatMessage' }).props('message')
+      ).toMatchObject({ content: 'Earlier message from MAX' });
     }
   );
 

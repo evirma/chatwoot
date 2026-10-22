@@ -9,6 +9,16 @@ describe '/widget', type: :request do
   let(:token) { Widget::TokenService.new(payload: payload).generate_token }
 
   describe 'GET /widget' do
+    # EVIRMA: Signed bootstrap must not allocate an anonymous identity while loading the frame.
+    it 'defers contact creation when the SDK requests bootstrap' do
+      expect do
+        get widget_url(website_token: web_widget.website_token, bootstrap: true)
+      end.not_to change(Contact, :count)
+
+      expect(response).to be_successful
+      expect(response.body).to include('window.chatwootBootstrap = true')
+    end
+
     it 'renders the page correctly when called with website_token' do
       get widget_url(website_token: web_widget.website_token)
       expect(response).to be_successful

@@ -34,3 +34,6 @@ json.contact do
 end
 
 json.global_config @global_config
+
+# EVIRMA: Keep guest bootstrap usable while forwarding the standard setUser failure to the host.
+json.set_user_error @set_user_error if @set_user_error

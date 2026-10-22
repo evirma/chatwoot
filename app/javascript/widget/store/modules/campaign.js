@@ -123,7 +123,7 @@ export const actions = {
   },
 
   executeCampaign: async (
-    { commit },
+    { commit, rootGetters },
     { campaignId, websiteToken, customAttributes }
   ) => {
     try {
@@ -132,7 +132,15 @@ export const actions = {
         { isCreating: true },
         { root: true }
       );
-      await triggerCampaign({ campaignId, websiteToken, customAttributes });
+      // EVIRMA: Campaign creation shares host defaults and lets prechat values override them.
+      await triggerCampaign({
+        campaignId,
+        websiteToken,
+        customAttributes: {
+          ...rootGetters['appConfig/getInitialConversationCustomAttributes'],
+          ...customAttributes,
+        },
+      });
       commit('setCampaignExecuted', true);
       commit('setActiveCampaign', {});
     } catch (error) {

@@ -1,4 +1,9 @@
 {
+  "EVIRMA_OPENS_AT": "Откроемся утром в {opensAt}",
+  "EVIRMA_MESSENGERS": {
+    "TELEGRAM": "Продолжить в Telegram",
+    "MAX": "Продолжить в MAX"
+  },
   "EVIRMA_MESSAGE_EDIT": { "EDITED": "изменено" },
   "EVIRMA_DROP_TO_SEND": "Отпустите, чтобы отправить",
   "COMPONENTS": {

@@ -1,7 +1,8 @@
 <script>
 // EVIRMA: Observe the shared agent store independently of header rendering.
 import { mapGetters, mapActions, useStore } from 'vuex';
-import { computed, ref, watch } from 'vue';
+// EVIRMA: Share the existing polling clock with native header availability text.
+import { computed, provide, ref, watch } from 'vue';
 import { setHeader } from 'widget/helpers/axios';
 import addHours from 'date-fns/addHours';
 import { IFrameHelper, RNHelper } from 'widget/helpers/utils';
@@ -21,9 +22,15 @@ import {
 } from './constants/widgetBusEvents';
 import { useDarkMode } from 'widget/composables/useDarkMode';
 import { useRouter } from 'vue-router';
-import { useAvailability } from 'widget/composables/useAvailability';
+import {
+  EVIRMA_AVAILABILITY_TIME,
+  useAvailability,
+} from 'widget/composables/useAvailability';
 import { SDK_SET_BUBBLE_VISIBILITY } from '../shared/constants/sharedFrameEvents';
 import { emitter } from 'shared/helpers/mitt';
+// EVIRMA: Campaign previews use the same host message event as operator replies.
+import { CHATWOOT_ON_MESSAGE } from './constants/sdkEvents';
+import { MESSAGE_TYPE } from 'shared/constants/messages';
 
 // EVIRMA: Refresh availability without relying on presence websocket events.
 const AGENT_AVAILABILITY_REFRESH_INTERVAL = 60 * 1000;
@@ -44,6 +51,8 @@ export default {
     );
     // EVIRMA: Reuse the existing polling timer to advance the schedule clock.
     const availabilityTime = ref(new Date());
+    // EVIRMA: Header status and parent events must cross schedule boundaries together.
+    provide(EVIRMA_AVAILABILITY_TIME, availabilityTime);
     const { isInWorkingHours, isOnline, isOutOfOffice, opensAt } =
       useAvailability(availableAgents, availabilityTime);
     const availability = computed(() => {
@@ -253,6 +262,13 @@ export default {
       emitter.on('snooze-campaigns', () => {
         const expireBy = addHours(new Date(), 1);
         this.campaignsSnoozedTill = Number(expireBy);
+        // EVIRMA: Publish the exact widget snooze mark for host persistence in every mode.
+        if (this.isIFrame) {
+          IFrameHelper.sendMessage({
+            event: 'setCampaignReadOn',
+            till: this.campaignsSnoozedTill,
+          });
+        }
       });
     },
     setCampaignView() {
@@ -264,6 +280,23 @@ export default {
         !messageCount &&
         !shouldSnoozeCampaign;
       if (this.isIFrame && isCampaignReadyToExecute) {
+        // EVIRMA: Deliver hidden campaign previews to the host without opening the widget.
+        if (this.hideMessageBubble && !this.showUnreadMessagesDialog) {
+          IFrameHelper.sendMessage({
+            event: 'onEvent',
+            eventIdentifier: CHATWOOT_ON_MESSAGE,
+            data: {
+              content: activeCampaign.message,
+              sender: activeCampaign.sender,
+              sender_type: 'User',
+              message_type: MESSAGE_TYPE.OUTGOING,
+              attachments: [],
+              campaignId: activeCampaign.id,
+              is_campaign: true,
+            },
+          });
+          return;
+        }
         this.router.replace({ name: 'campaigns' }).then(() => {
           this.setIframeHeight(true);
           IFrameHelper.sendMessage({ event: 'setUnreadMode' });
@@ -322,9 +355,18 @@ export default {
         }
         const message = IFrameHelper.getMessage(e);
         if (message.event === 'config-set') {
+          // EVIRMA: Apply external attribution before loading or creating conversations.
+          if (message.referrerURL !== undefined) {
+            window.referrerURL = message.referrerURL;
+            this.setReferrerHost(message.referrerHost);
+          }
           this.setLocale(message.locale);
           this.setBubbleLabel();
-          this.fetchOldConversations().then(() => this.setUnreadView());
+          this.fetchOldConversations().then(() => {
+            // EVIRMA: Publish initial unread state even when the loaded count stays at zero.
+            this.handleUnreadNotificationDot();
+            this.setUnreadView();
+          });
           this.fetchAvailableAgents(websiteToken);
           this.setAppConfig(message);
           this.$store.dispatch('contacts/get');
@@ -377,6 +419,11 @@ export default {
           this.setColorScheme(message.darkMode);
         } else if (message.event === 'toggle-open') {
           this.$store.dispatch('appConfig/toggleWidgetOpen', message.isOpen);
+
+          // EVIRMA: Mark visible messages as read even when reopening keeps the same route.
+          if (message.isOpen && this.$route.name === 'messages') {
+            this.$store.dispatch('conversation/setUserLastSeen');
+          }
 
           const shouldShowMessageView =
             ['home'].includes(this.$route.name) &&

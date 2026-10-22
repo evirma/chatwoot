@@ -20,9 +20,10 @@ class Api::V1::Widget::ContactsController < Api::V1::Widget::BaseController
       contact = @contact
     end
 
-    @contact_inbox.update(hmac_verified: true) if should_verify_hmac?
-
     identify_contact(contact)
+
+    # EVIRMA: A failed identification must never persist a verified guest session.
+    @contact_inbox.update(hmac_verified: true) if should_verify_hmac?
   end
 
   # TODO : clean up this with proper routes delete contacts/custom_attributes
@@ -73,15 +74,8 @@ class Api::V1::Widget::ContactsController < Api::V1::Widget::BaseController
   end
 
   def valid_hmac?
-    expected_hash = OpenSSL::HMAC.hexdigest(
-      'sha256',
-      @web_widget.hmac_token,
-      params[:identifier].to_s
-    )
-    identifier_hash = params[:identifier_hash].to_s
-    return false unless identifier_hash.bytesize == expected_hash.bytesize
-
-    ActiveSupport::SecurityUtils.secure_compare(identifier_hash, expected_hash)
+    # EVIRMA: Share signature verification with identity bootstrap.
+    valid_widget_hmac?(@web_widget, params[:identifier], params[:identifier_hash])
   end
 
   def permitted_params

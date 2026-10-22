@@ -1,10 +1,14 @@
 <script setup>
-import { computed, toRef } from 'vue';
+// EVIRMA: Use the same polling clock as availability events sent to the host.
+import { computed, inject, toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useMapGetter } from 'dashboard/composables/store.js';
 import GroupedAvatars from 'widget/components/GroupedAvatars.vue';
 import AvailabilityText from './AvailabilityText.vue';
-import { useAvailability } from 'widget/composables/useAvailability';
+import {
+  EVIRMA_AVAILABILITY_TIME,
+  useAvailability,
+} from 'widget/composables/useAvailability';
 
 const props = defineProps({
   agents: {
@@ -38,7 +42,16 @@ const {
   isOnline,
   inboxConfig,
   isInWorkingHours,
-} = useAvailability(toRef(props, 'agents'));
+  // EVIRMA: Prefer the known channel-local opening time over generic offline text.
+  isOutOfOffice,
+  opensAt,
+} = useAvailability(
+  toRef(props, 'agents'),
+  inject(
+    EVIRMA_AVAILABILITY_TIME,
+    computed(() => new Date())
+  )
+);
 
 const workingHours = computed(() => inboxConfig.value.workingHours || []);
 const workingHoursEnabled = computed(
@@ -70,7 +83,16 @@ const headerText = computed(() =>
         {{ headerText }}
       </div>
 
+      <!-- EVIRMA: Show the next opening consistently in the compact native header. -->
+      <span
+        v-if="isOutOfOffice && opensAt"
+        :class="textClasses"
+        class="text-n-slate-11"
+      >
+        {{ t('EVIRMA_OPENS_AT', { opensAt }) }}
+      </span>
       <AvailabilityText
+        v-else
         :time="currentTime"
         :utc-offset="utcOffset"
         :working-hours="workingHours"

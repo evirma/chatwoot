@@ -1,5 +1,7 @@
 import { buildSearchParamsWithLocale } from '../helpers/urlParamsHelper';
 import { generateEventParams } from './events';
+// EVIRMA: Reuse Axios to preserve structured creation metadata in multipart requests.
+import { toFormData } from 'axios';
 
 const createConversation = params => {
   const referrerURL = window.referrerURL || '';
@@ -65,7 +67,8 @@ const sendAttachment = (
   }
   if (customAttributes && Object.keys(customAttributes).length > 0) {
     Object.entries(customAttributes).forEach(([key, value]) => {
-      formData.append(`custom_attributes[${key}]`, value);
+      // EVIRMA: Root keys preserve Rails list syntax as well as nested object attributes.
+      toFormData({ [`custom_attributes[${key}]`]: value }, formData);
     });
   }
   if (labels && labels.length > 0) {

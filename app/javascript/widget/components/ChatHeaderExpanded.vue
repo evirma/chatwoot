@@ -1,6 +1,12 @@
 <script setup>
 import HeaderActions from './HeaderActions.vue';
-import { computed } from 'vue';
+// EVIRMA: Follow the app clock when displaying the next opening in the expanded header.
+import { computed, inject } from 'vue';
+import {
+  EVIRMA_AVAILABILITY_TIME,
+  useAvailability,
+} from 'widget/composables/useAvailability';
+import MessengerButtons from './MessengerButtons.vue';
 import { useMessageFormatter } from 'shared/composables/useMessageFormatter';
 
 const props = defineProps({
@@ -23,6 +29,14 @@ const props = defineProps({
 });
 
 const { formatMessage } = useMessageFormatter();
+// EVIRMA: Reuse the availability event's schedule and channel-local opening time.
+const { isOutOfOffice, opensAt } = useAvailability(
+  [],
+  inject(
+    EVIRMA_AVAILABILITY_TIME,
+    computed(() => new Date())
+  )
+);
 
 const containerClasses = computed(() => [
   props.avatarUrl ? 'justify-between' : 'justify-end',
@@ -53,5 +67,10 @@ const containerClasses = computed(() => [
       v-dompurify-html="formatMessage(introBody)"
       class="text-lg leading-normal text-n-slate-11 [&_a]:underline line-clamp-6"
     />
+    <!-- EVIRMA: Show the known opening time and optional messenger actions on home. -->
+    <p v-if="isOutOfOffice && opensAt" class="mt-2 text-sm text-n-slate-11">
+      {{ $t('EVIRMA_OPENS_AT', { opensAt }) }}
+    </p>
+    <MessengerButtons class="mt-3" />
   </header>
 </template>

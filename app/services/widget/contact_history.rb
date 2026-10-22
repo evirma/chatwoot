@@ -16,8 +16,9 @@ class Widget::ContactHistory
     @account = account
   end
 
-  def messages(excluding_inbox:)
-    return [] if @contact.identifier.blank?
+  def messages(excluding_inbox:, contact_inbox:)
+    # EVIRMA: Only a verified session for an identified contact can read cross-channel history.
+    return [] unless contact_inbox.hmac_verified? && @contact.identifier.present?
 
     # EVIRMA: Filter before LIMIT so deleted records cannot displace visible history.
     visible_messages.where("(content_attributes #>> '{}')::jsonb ->> 'deleted' IS DISTINCT FROM 'true'").where.not(inbox_id: excluding_inbox.id)
@@ -31,6 +32,7 @@ class Widget::ContactHistory
     return unless visible_messages.exists?(id: message.id)
 
     tokens = @contact.contact_inboxes.joins(:inbox)
+                     .where(hmac_verified: true)
                      .where(inboxes: { account_id: @account.id, channel_type: 'Channel::WebWidget' })
                      .where.not(inbox_id: message.inbox_id).pluck(:pubsub_token)
     return if tokens.empty?

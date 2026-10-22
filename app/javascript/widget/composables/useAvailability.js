@@ -9,6 +9,9 @@ import { useCamelCase } from 'dashboard/composables/useTransformKeys';
 const DEFAULT_TIMEZONE = 'UTC';
 const DEFAULT_REPLY_TIME = 'in_a_few_minutes';
 
+// EVIRMA: Share one app-owned schedule clock with native widget headers.
+export const EVIRMA_AVAILABILITY_TIME = 'evirmaAvailabilityTime';
+
 /**
  * Composable for availability-related logic
  * @param {Ref|Array} agents - Available agents (can be ref or raw array)

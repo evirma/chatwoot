@@ -5,7 +5,7 @@ RSpec.describe '/api/v1/widget/contact_history', type: :request do
   let(:account) { create(:account) }
   let(:web_widget) { create(:channel_widget, account: account) }
   let(:contact) { create(:contact, account: account, identifier: 'evirma-customer') }
-  let(:contact_inbox) { create(:contact_inbox, contact: contact, inbox: web_widget.inbox) }
+  let(:contact_inbox) { create(:contact_inbox, contact: contact, inbox: web_widget.inbox, hmac_verified: true) }
   let(:token) { Widget::TokenService.new(payload: { source_id: contact_inbox.source_id, inbox_id: web_widget.inbox.id }).generate_token }
   let(:other_inbox) { create(:channel_api, account: account).inbox }
   let(:conversation) { create(:conversation, account: account, contact: contact, inbox: other_inbox) }
@@ -54,7 +54,7 @@ RSpec.describe '/api/v1/widget/contact_history', type: :request do
 
   it 'never returns another contact history, even if a contact id is supplied' do
     stranger = create(:contact, account: account, identifier: 'stranger')
-    stranger_inbox = create(:contact_inbox, contact: stranger, inbox: web_widget.inbox)
+    stranger_inbox = create(:contact_inbox, contact: stranger, inbox: web_widget.inbox, hmac_verified: true)
     stranger_token = Widget::TokenService.new(payload: { source_id: stranger_inbox.source_id, inbox_id: web_widget.inbox.id }).generate_token
 
     get '/api/v1/widget/contact_history', params: { website_token: web_widget.website_token, contact_id: contact.id },
@@ -74,6 +74,16 @@ RSpec.describe '/api/v1/widget/contact_history', type: :request do
     expect(response).to have_http_status(:ok)
     expect(response.parsed_body['payload'].pluck('id')).to eq([message.id])
     expect(response.parsed_body['payload'].first['content_attributes']).to include('edited_at' => '2026-10-19T12:00:00Z')
+  end
+
+  # EVIRMA: An identifier alone never authorizes cross-channel history.
+  it 'returns no history for an unverified contact inbox' do
+    contact_inbox.update!(hmac_verified: false)
+
+    get '/api/v1/widget/contact_history', params: { website_token: web_widget.website_token }, headers: { 'X-Auth-Token' => token }
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body['payload']).to eq([])
   end
 
   it 'returns no history for guests' do

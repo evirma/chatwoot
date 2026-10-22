@@ -1,5 +1,27 @@
 import endPoints from '../endPoints';
 
+// EVIRMA: Attachment-first creation must preserve host metadata instead of stringifying objects.
+describe('#sendAttachment creation metadata', () => {
+  it('preserves nested objects and list attributes using Rails multipart keys', () => {
+    const { params } = endPoints.sendAttachment(
+      { attachment: { file: 'signed-blob' } },
+      {
+        customAttributes: {
+          context: { page: 'orders' },
+          tags: ['vip', 'support'],
+          order_id: '42',
+        },
+      }
+    );
+    expect(params.get('custom_attributes[context][page]')).toBe('orders');
+    expect(params.getAll('custom_attributes[tags][]')).toEqual([
+      'vip',
+      'support',
+    ]);
+    expect(params.get('custom_attributes[order_id]')).toBe('42');
+  });
+});
+
 describe('#sendMessage', () => {
   it('returns correct payload', () => {
     const spy = vi.spyOn(global, 'Date').mockImplementation(() => ({

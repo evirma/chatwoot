@@ -1,4 +1,9 @@
 {
+  "EVIRMA_OPENS_AT": "We open in the morning at {opensAt}",
+  "EVIRMA_MESSENGERS": {
+    "TELEGRAM": "Continue in Telegram",
+    "MAX": "Continue in MAX"
+  },
   "EVIRMA_MESSAGE_EDIT": { "EDITED": "edited" },
   "EVIRMA_DROP_TO_SEND": "Drop to send",
   "EVIRMA_CONTACT_HISTORY": {

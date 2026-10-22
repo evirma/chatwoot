@@ -4,6 +4,8 @@ import {
   getBubbleView,
   getDarkMode,
   getWidgetStyle,
+  // EVIRMA: Validate optional external attribution at both SDK entry points.
+  getPageUrl,
 } from '../sdk/settingsHelper';
 import {
   computeHashForUserData,
@@ -17,6 +19,8 @@ import {
 } from '../sdk/DOMHelpers';
 import { setCookieWithDomain } from '../sdk/cookieHelpers';
 import { SDK_SET_BUBBLE_VISIBILITY } from 'shared/constants/sharedFrameEvents';
+// EVIRMA: Notify the host when resetting externally persisted conversation identity.
+import { dispatchWindowEvent } from 'shared/helpers/CustomEventHelper';
 
 const runSDK = ({ baseUrl, websiteToken }) => {
   if (window.$chatwoot) {
@@ -58,6 +62,23 @@ const runSDK = ({ baseUrl, websiteToken }) => {
   window.$chatwoot = {
     baseUrl,
     baseDomain,
+    // EVIRMA: Presence of the key opts out of token cookies, including an initial null.
+    useExternalConversationToken: Object.prototype.hasOwnProperty.call(
+      chatwootSettings,
+      'conversationToken'
+    ),
+    conversationToken: chatwootSettings.conversationToken,
+    // EVIRMA: Initial identity is sent by POST before the widget mounts, separately from setUser.
+    bootstrapUser: chatwootSettings.user,
+    // EVIRMA: Carry optional host page and messenger settings into the iframe.
+    pageUrl:
+      chatwootSettings.pageUrl === undefined
+        ? undefined
+        : getPageUrl(chatwootSettings.pageUrl),
+    messengerButtons: chatwootSettings.messengerButtons || [],
+    // EVIRMA: Keep campaign persistence and conversation creation metadata under host control.
+    campaignsSnoozedTill: chatwootSettings.campaignsSnoozedTill,
+    conversationCustomAttributes: chatwootSettings.conversationCustomAttributes,
     hasLoaded: false,
     hideMessageBubble: chatwootSettings.hideMessageBubble || false,
     // EVIRMA: Allow the host page to hide both widget headers.
@@ -125,7 +146,10 @@ const runSDK = ({ baseUrl, websiteToken }) => {
       }
 
       const userCookieName = getUserCookieName();
-      const existingCookieValue = Cookies.get(userCookieName);
+      // EVIRMA: External identity must work without reading SDK identity cookies.
+      const existingCookieValue = window.$chatwoot.useExternalConversationToken
+        ? undefined
+        : Cookies.get(userCookieName);
       const hashToBeStored = computeHashForUserData({ identifier, user });
       if (hashToBeStored === existingCookieValue) {
         return;
@@ -135,9 +159,10 @@ const runSDK = ({ baseUrl, websiteToken }) => {
       window.$chatwoot.user = user;
       IFrameHelper.sendMessage('set-user', { identifier, user });
 
-      setCookieWithDomain(userCookieName, hashToBeStored, {
-        baseDomain,
-      });
+      // EVIRMA: Keep external identity entirely under host control.
+      if (!window.$chatwoot.useExternalConversationToken) {
+        setCookieWithDomain(userCookieName, hashToBeStored, { baseDomain });
+      }
     },
 
     setCustomAttributes(customAttributes = {}) {
@@ -196,13 +221,31 @@ const runSDK = ({ baseUrl, websiteToken }) => {
       });
     },
 
+    // EVIRMA: Update campaign matching and conversation referrers immediately.
+    setPageUrl(url) {
+      // EVIRMA: Ignore invalid updates while preserving the last valid page.
+      const pageUrl = getPageUrl(url);
+      if (pageUrl === undefined) return;
+      window.$chatwoot.pageUrl = pageUrl;
+      IFrameHelper.events.onLocationChange({});
+    },
+
     reset() {
       if (window.$chatwoot.isOpen) {
         IFrameHelper.events.toggleBubble();
       }
 
-      Cookies.remove('cw_conversation');
-      Cookies.remove(getUserCookieName());
+      // EVIRMA: Reset host persistence even when conversation cookies are disabled.
+      window.$chatwoot.bootstrapUser = null;
+      window.$chatwoot.conversationToken = null;
+      dispatchWindowEvent({
+        eventName: 'chatwoot:conversation-token',
+        data: { token: null },
+      });
+      if (!window.$chatwoot.useExternalConversationToken) {
+        Cookies.remove('cw_conversation');
+        Cookies.remove(getUserCookieName());
+      }
 
       const iframe = IFrameHelper.getAppFrame();
       iframe.src = IFrameHelper.getUrl({

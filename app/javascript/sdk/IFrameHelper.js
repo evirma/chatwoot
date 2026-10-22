@@ -36,22 +36,58 @@ import {
 import { isFlatWidgetStyle } from './settingsHelper';
 import { popoutChatWindow } from '../widget/helpers/popoutHelper';
 
-const updateAuthCookie = (cookieContent, baseDomain = '') =>
-  setCookieWithDomain('cw_conversation', cookieContent, {
-    baseDomain,
+// EVIRMA: Always publish tokens and persist cookies only in the default SDK mode.
+const updateAuthCookie = (token, baseDomain = '') => {
+  window.$chatwoot.conversationToken = token;
+  dispatchWindowEvent({
+    eventName: 'chatwoot:conversation-token',
+    data: { token },
   });
-
-const updateCampaignReadStatus = baseDomain => {
-  const expireBy = new Date(Date.now() + 60 * 60 * 1000);
-  setCookieWithDomain('cw_snooze_campaigns_till', Number(expireBy), {
-    expires: expireBy,
-    baseDomain,
-  });
+  if (!window.$chatwoot.useExternalConversationToken) {
+    setCookieWithDomain('cw_conversation', token, { baseDomain });
+  }
 };
+
+// EVIRMA: Reuse the widget mark so host and widget agree on the exact expiry.
+const updateCampaignReadStatus = (
+  baseDomain,
+  till = Date.now() + 60 * 60 * 1000
+) => {
+  const expireBy = new Date(till);
+  // EVIRMA: Publish every snooze and keep external mode entirely cookie-free.
+  window.$chatwoot.campaignsSnoozedTill = till;
+  dispatchWindowEvent({
+    eventName: 'chatwoot:campaigns-snoozed',
+    data: { till },
+  });
+  if (!window.$chatwoot.useExternalConversationToken) {
+    setCookieWithDomain('cw_snooze_campaigns_till', till, {
+      expires: expireBy,
+      baseDomain,
+    });
+  }
+};
+
+// EVIRMA: Use the same trusted origin for incoming and outgoing iframe messages.
+const getWidgetOrigin = () => new URL(window.$chatwoot.baseUrl).origin;
 
 export const IFrameHelper = {
   getUrl({ baseUrl, websiteToken }) {
-    return `${baseUrl}/widget?website_token=${websiteToken}`;
+    // EVIRMA: Restore an externally stored conversation without relying on cookies.
+    // EVIRMA: Only a non-secret flag enters the URL; the signed user travels in the bootstrap POST.
+    const url = `${baseUrl}/widget?website_token=${websiteToken}${window.$chatwoot.bootstrapUser ? '&bootstrap=true' : ''}`;
+    const { useExternalConversationToken, conversationToken } =
+      window.$chatwoot;
+    return useExternalConversationToken && conversationToken !== null
+      ? `${url}&cw_conversation=${encodeURIComponent(conversationToken)}`
+      : url;
+  },
+  // EVIRMA: Use the host-provided page for campaign and conversation attribution.
+  getPageUrl: () => {
+    const referrerURL = window.$chatwoot.pageUrl;
+    return referrerURL
+      ? { referrerURL, referrerHost: new URL(referrerURL).host }
+      : {};
   },
   createFrame: ({ baseUrl, websiteToken }) => {
     if (IFrameHelper.getAppFrame()) {
@@ -60,7 +96,10 @@ export const IFrameHelper = {
 
     loadCSS();
     const iframe = document.createElement('iframe');
-    const cwCookie = Cookies.get('cw_conversation');
+    // EVIRMA: An explicit null token must not restore a cookie-backed conversation.
+    const cwCookie = window.$chatwoot.useExternalConversationToken
+      ? null
+      : Cookies.get('cw_conversation');
     let widgetUrl = IFrameHelper.getUrl({ baseUrl, websiteToken });
     if (cwCookie) {
       widgetUrl = `${widgetUrl}&cw_conversation=${cwCookie}`;
@@ -94,12 +133,17 @@ export const IFrameHelper = {
     const element = IFrameHelper.getAppFrame();
     element.contentWindow.postMessage(
       `chatwoot-widget:${JSON.stringify({ event: key, ...value })}`,
-      '*'
+      getWidgetOrigin()
     );
   },
   initPostMessageCommunication: () => {
-    window.onmessage = e => {
+    // EVIRMA: Preserve host listeners and trust only this widget's source and origin.
+    const iframe = IFrameHelper.getAppFrame();
+    const origin = getWidgetOrigin();
+    window.addEventListener('message', e => {
       if (
+        e.source !== iframe.contentWindow ||
+        e.origin !== origin ||
         typeof e.data !== 'string' ||
         e.data.indexOf('chatwoot-widget:') !== 0
       ) {
@@ -109,7 +153,7 @@ export const IFrameHelper = {
       if (typeof IFrameHelper.events[message.event] === 'function') {
         IFrameHelper.events[message.event](message);
       }
-    };
+    });
   },
   initWindowSizeListener: () => {
     window.addEventListener('resize', () => IFrameHelper.toggleCloseButton());
@@ -152,10 +196,27 @@ export const IFrameHelper = {
   },
 
   events: {
+    // EVIRMA: The trusted frame requests identity before mounting or connecting its websocket.
+    'bootstrap-request': () => {
+      const {
+        bootstrapUser: user,
+        conversationToken,
+        useExternalConversationToken,
+      } = window.$chatwoot;
+      IFrameHelper.sendMessage('bootstrap', {
+        user,
+        conversationToken: useExternalConversationToken
+          ? conversationToken
+          : Cookies.get('cw_conversation'),
+      });
+    },
     loaded: message => {
       updateAuthCookie(message.config.authToken, window.$chatwoot.baseDomain);
       window.$chatwoot.hasLoaded = true;
-      const campaignsSnoozedTill = Cookies.get('cw_snooze_campaigns_till');
+      // EVIRMA: External persistence restores snoozes from settings without reading cookies.
+      const campaignsSnoozedTill = window.$chatwoot.useExternalConversationToken
+        ? window.$chatwoot.campaignsSnoozedTill
+        : Cookies.get('cw_snooze_campaigns_till');
       IFrameHelper.sendMessage('config-set', {
         locale: window.$chatwoot.locale,
         position: window.$chatwoot.position,
@@ -164,6 +225,12 @@ export const IFrameHelper = {
         hideHeader: window.$chatwoot.hideHeader,
         // EVIRMA: Pass the home-screen preference through config-set.
         skipHome: window.$chatwoot.skipHome,
+        // EVIRMA: Deliver optional messenger actions and the external page URL.
+        messengerButtons: window.$chatwoot.messengerButtons,
+        // EVIRMA: Attach host metadata only when the widget creates a conversation.
+        conversationCustomAttributes:
+          window.$chatwoot.conversationCustomAttributes,
+        ...IFrameHelper.getPageUrl(),
         showPopoutButton: window.$chatwoot.showPopoutButton,
         widgetStyle: window.$chatwoot.widgetStyle,
         darkMode: window.$chatwoot.darkMode,
@@ -199,7 +266,11 @@ export const IFrameHelper = {
     error: ({ errorType, data }) => {
       dispatchWindowEvent({ eventName: CHATWOOT_ERROR, data: data });
 
-      if (errorType === SET_USER_ERROR) {
+      // EVIRMA: External identity does not use SDK user cookies, even on errors.
+      if (
+        errorType === SET_USER_ERROR &&
+        !window.$chatwoot.useExternalConversationToken
+      ) {
         Cookies.remove(getUserCookieName());
       }
     },
@@ -213,6 +284,13 @@ export const IFrameHelper = {
         data: detail,
       });
     },
+    // EVIRMA: Let the host decide how to continue in the selected messenger.
+    'messenger-requested': ({ channel }) => {
+      dispatchWindowEvent({
+        eventName: 'chatwoot:messenger-requested',
+        data: { channel },
+      });
+    },
     setBubbleLabel(message) {
       setBubbleText(window.$chatwoot.launcherTitle || message.label);
     },
@@ -221,8 +299,9 @@ export const IFrameHelper = {
       updateAuthCookie(widgetAuthToken, window.$chatwoot.baseDomain);
     },
 
-    setCampaignReadOn() {
-      updateCampaignReadStatus(window.$chatwoot.baseDomain);
+    // EVIRMA: Older callers can still request a snooze without supplying a mark.
+    setCampaignReadOn({ till } = {}) {
+      updateCampaignReadStatus(window.$chatwoot.baseDomain, till);
     },
 
     postback(data) {
@@ -244,7 +323,10 @@ export const IFrameHelper = {
     },
 
     popoutChatWindow: ({ baseUrl, websiteToken, locale }) => {
-      const cwCookie = Cookies.get('cw_conversation');
+      // EVIRMA: Popouts reuse external identity without consulting token cookies.
+      const cwCookie = window.$chatwoot.useExternalConversationToken
+        ? window.$chatwoot.conversationToken
+        : Cookies.get('cw_conversation');
       window.$chatwoot.toggle('close');
       popoutChatWindow(baseUrl, websiteToken, locale, cwCookie);
     },
@@ -264,6 +346,8 @@ export const IFrameHelper = {
       IFrameHelper.sendMessage('change-url', {
         referrerURL,
         referrerHost,
+        // EVIRMA: Host page attribution takes precedence over the embedding URL.
+        ...IFrameHelper.getPageUrl(),
       });
     },
     updateIframeHeight: message => {
@@ -279,6 +363,11 @@ export const IFrameHelper = {
 
     resetUnreadMode: () => removeUnreadClass(),
     handleNotificationDot: event => {
+      // EVIRMA: The host needs unread counts even when its own launcher replaces the bubble.
+      dispatchWindowEvent({
+        eventName: 'chatwoot:unread-count',
+        data: { count: event.unreadMessageCount },
+      });
       if (window.$chatwoot.hideMessageBubble) {
         return;
       }

@@ -194,6 +194,18 @@ RSpec.describe '/api/v1/widget/contacts', type: :request do
     let(:correct_identifier_hash) { OpenSSL::HMAC.hexdigest('sha256', web_widget.hmac_token, params[:identifier].to_s) }
     let(:incorrect_identifier_hash) { 'test' }
 
+    # EVIRMA: Failed signed identification must not leave a verified guest session behind.
+    it 'does not verify the contact inbox when identification returns 422' do
+      patch '/api/v1/widget/contact/set_user',
+            params: params.merge(identifier_hash: correct_identifier_hash, name: 'a' * 256),
+            headers: { 'X-Auth-Token' => token },
+            as: :json
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(contact_inbox.reload).not_to be_hmac_verified
+      expect(contact.reload.identifier).to be_nil
+    end
+
     context 'when the current contact identifier is different from param identifier' do
       before do
         contact.update(identifier: 'random')
