@@ -47,7 +47,10 @@ gh secret set EVIRMA_DEPLOY_SSH_KEY < ./evirma-deploy-key
 gh secret set EVIRMA_DEPLOY_KNOWN_HOSTS < ./known_hosts.evirma
 gh secret set EVIRMA_DEPLOY_HOST --body 'HOST'
 gh secret set EVIRMA_DEPLOY_USER --body 'root'
+gh secret set EVIRMA_DEPLOY_PORT --body 'PORT'
 ```
+
+Для порта не 22 строка в `known_hosts.evirma` имеет вид `[HOST]:PORT ключ`.
 
 Не добавляйте приватный ключ в репозиторий. После сохранения секрета уберите его
 из рабочей копии в защищённое хранилище. Скрипты на сервере устанавливаются отдельно:

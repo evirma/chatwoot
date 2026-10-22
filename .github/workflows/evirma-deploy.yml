@@ -29,6 +29,7 @@ jobs:
           DEPLOY_KNOWN_HOSTS: ${{ secrets.EVIRMA_DEPLOY_KNOWN_HOSTS }}
           DEPLOY_HOST: ${{ secrets.EVIRMA_DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.EVIRMA_DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.EVIRMA_DEPLOY_PORT || '22' }}
         run: |
           set -euo pipefail
           [[ "$DEPLOY_SHA" =~ ^[[:xdigit:]]{40}$ ]] || { echo 'Expected a full 40-character hex SHA'; exit 2; }
@@ -39,7 +40,7 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_file"
           chmod 600 "$key_file"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$hosts_file"
-          ssh -i "$key_file" \
+          ssh -i "$key_file" -p "$DEPLOY_PORT" \
             -o BatchMode=yes -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$hosts_file" \
             -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=180 \
