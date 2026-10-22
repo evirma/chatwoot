@@ -116,6 +116,8 @@ node_modules/.bin/eslint app/javascript/entrypoints/sdk.js app/javascript/entryp
 
 ## Доработки SDK расширения Evirma: безопасность, создание беседы и уведомления
 
+- F8 — EVIRMA: Opening the panel on the existing `messages` route marks messages as read and emits `chatwoot:unread-count` with count 0; regression covered in `app/javascript/widget/specs/App.spec.js`.
+
 | Файл | Место и назначение правки | Контракт / поведение | Риск при обновлении upstream | Проверка |
 | --- | --- | --- | --- | --- |
 | `app/javascript/sdk/IFrameHelper.js` | EVIRMA: общий расчёт доверенного origin для приёма и отправки сообщений. | SDK отправляет сообщения, включая `set-user` с подписью, только в `new URL(window.$chatwoot.baseUrl).origin`, сохраняя проверку source/origin входящих сообщений. | Низкий: сохранять общий расчёт origin в обе стороны. | Проверки чужих source/origin и отправки на origin с нестандартным портом. |

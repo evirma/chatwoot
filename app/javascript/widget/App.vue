@@ -420,6 +420,11 @@ export default {
         } else if (message.event === 'toggle-open') {
           this.$store.dispatch('appConfig/toggleWidgetOpen', message.isOpen);
 
+          // EVIRMA: Mark visible messages as read even when reopening keeps the same route.
+          if (message.isOpen && this.$route.name === 'messages') {
+            this.$store.dispatch('conversation/setUserLastSeen');
+          }
+
           const shouldShowMessageView =
             ['home'].includes(this.$route.name) &&
             message.isOpen &&

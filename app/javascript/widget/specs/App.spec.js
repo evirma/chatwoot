@@ -10,6 +10,8 @@ import { IFrameHelper } from '../helpers/utils';
 import { emitter } from 'shared/helpers/mitt';
 // EVIRMA: Verify unread events using the widget's actual counting and read-state rules.
 import conversation from '../store/modules/conversation';
+// EVIRMA: Stub only the read receipt request while exercising the real store action.
+import { API } from 'widget/helpers/axios';
 
 describe('App availability-changed', () => {
   let store;
@@ -43,13 +45,16 @@ describe('App availability-changed', () => {
           namespaced: true,
           state: { conversations: {}, meta: {} },
           getters: {
-            getConversationSize: () => 0,
+            getConversationSize: conversation.getters.getConversationSize,
             getIsFetchingList: () => false,
             getMessageCount: conversation.getters.getMessageCount,
             getUnreadMessageCount: conversation.getters.getUnreadMessageCount,
           },
           mutations: conversation.mutations,
-          actions: { fetchOldConversations: vi.fn() },
+          actions: {
+            fetchOldConversations: vi.fn(),
+            setUserLastSeen: conversation.actions.setUserLastSeen,
+          },
         },
         campaign: {
           namespaced: true,
@@ -357,6 +362,52 @@ describe('App availability-changed', () => {
     );
     expect(store.state.appConfig.isWidgetOpen).toBe(false);
     expect(router.currentRoute.value.name).toBe('home');
+  });
+
+  // EVIRMA: Reopening an already mounted conversation must publish the cleared unread count.
+  it('reports zero unread messages when toggle-open reveals the messages route', async () => {
+    vi.spyOn(API, 'post').mockResolvedValue({});
+    await store.dispatch('appConfig/setAppConfig', {
+      skipHome: true,
+      showUnreadMessagesDialog: false,
+    });
+    router.addRoute({
+      path: '/messages',
+      name: 'messages',
+      component: { template: '<div />' },
+    });
+    await router.push('/messages');
+    store.commit('conversation/pushMessageToConversation', {
+      id: 1,
+      message_type: 1,
+      created_at: 10,
+    });
+    store.commit('conversation/pushMessageToConversation', {
+      id: 2,
+      message_type: 1,
+      created_at: 11,
+    });
+    await nextTick();
+    expect(store.state.appConfig.isWidgetOpen).toBe(false);
+    expect(postMessage).toHaveBeenCalledWith(
+      'chatwoot-widget:{"event":"handleNotificationDot","unreadMessageCount":2}',
+      '*'
+    );
+    postMessage.mockClear();
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: 'chatwoot-widget:{"event":"toggle-open","isOpen":true}',
+      })
+    );
+    await nextTick();
+
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith(
+      'chatwoot-widget:{"event":"handleNotificationDot","unreadMessageCount":0}',
+      '*'
+    );
+    expect(store.state.appConfig.isWidgetOpen).toBe(true);
+    expect(router.currentRoute.value.name).toBe('messages');
   });
 
   // EVIRMA: Eligible timer campaigns reach the host without routing to a popup.
