@@ -1,0 +1,5 @@
+﻿ID;Имя;Мессенджер;Тег;Заполненная заявка;Успех;Состояние воронки;Лишняя колонка
+101;Telegram fixture;Telegram;VIP / Telegram;Да;Нет;Заполненная заявка;ignored
+102;MAX fixture;MAX;MAX;Да;Да;Успех;ignored
+103;No messages;MAX;;Нет;Нет;Новый;ignored
+104;Invalid Telegram;Telegram;Bad;Нет;Нет;Новый;ignored
