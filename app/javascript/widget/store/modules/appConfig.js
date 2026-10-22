@@ -15,6 +15,8 @@ const state = {
   skipHome: false,
   // EVIRMA: Messenger actions are opt-in for the embedding host.
   messengerButtons: [],
+  // EVIRMA: Keep native reply-time copy unless the host supplies a subtitle.
+  headerSubtitle: '',
   // EVIRMA: Keep creation defaults separate from mutable pending conversation metadata.
   conversationCustomAttributes: undefined,
   hideMessageBubble: false,
@@ -81,6 +83,8 @@ export const actions = {
       skipHome = false,
       // EVIRMA: Receive the host messenger preference through config-set.
       messengerButtons = [],
+      // EVIRMA: Reset the optional subtitle when config-set omits it.
+      headerSubtitle = '',
       // EVIRMA: Receive one-time conversation creation metadata from the host.
       conversationCustomAttributes,
       showUnreadMessagesDialog,
@@ -102,6 +106,8 @@ export const actions = {
       skipHome: skipHome === true,
       // EVIRMA: Share messenger actions with both native widget headers.
       messengerButtons,
+      // EVIRMA: Share host header copy with the compact header.
+      headerSubtitle,
       // EVIRMA: Preserve defaults across prechat state resets.
       conversationCustomAttributes,
       hideMessageBubble: !!hideMessageBubble,
@@ -151,6 +157,8 @@ export const mutations = {
     $state.skipHome = data.skipHome;
     // EVIRMA: Retain the configured messenger actions in the widget store.
     $state.messengerButtons = data.messengerButtons;
+    // EVIRMA: Retain the host subtitle in the widget configuration.
+    $state.headerSubtitle = data.headerSubtitle;
     // EVIRMA: Store host metadata for each conversation creation entry point.
     $state.conversationCustomAttributes = data.conversationCustomAttributes;
     $state.showPopoutButton = data.showPopoutButton;

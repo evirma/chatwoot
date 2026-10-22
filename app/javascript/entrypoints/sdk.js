@@ -76,6 +76,8 @@ const runSDK = ({ baseUrl, websiteToken }) => {
         ? undefined
         : getPageUrl(chatwootSettings.pageUrl),
     messengerButtons: chatwootSettings.messengerButtons || [],
+    // EVIRMA: Allow host copy to replace the online header reply time.
+    headerSubtitle: chatwootSettings.headerSubtitle || '',
     // EVIRMA: Keep campaign persistence and conversation creation metadata under host control.
     campaignsSnoozedTill: chatwootSettings.campaignsSnoozedTill,
     conversationCustomAttributes: chatwootSettings.conversationCustomAttributes,

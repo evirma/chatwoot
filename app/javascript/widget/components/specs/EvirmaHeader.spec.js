@@ -90,10 +90,19 @@ describe('EVIRMA native headers', () => {
       });
       wrapper = mountHeader(header);
       const buttons = wrapper.findAll('button');
-      expect(buttons.map(button => button.text())).toEqual([
+      expect(buttons.map(button => button.text())).toEqual(['Telegram', 'MAX']);
+      // EVIRMA: Keep compact brand names accessible with the full action label.
+      expect(buttons.map(button => button.attributes('aria-label'))).toEqual([
         'Продолжить в Telegram',
         'Продолжить в MAX',
       ]);
+      buttons.forEach(button => {
+        expect(button.attributes('title')).toBe(
+          button.attributes('aria-label')
+        );
+        expect(button.find('svg').attributes('aria-hidden')).toBe('true');
+        expect(button.find('svg path').exists()).toBe(true);
+      });
       await buttons[0].trigger('click');
       await buttons[1].trigger('click');
       expect(postMessage.mock.calls).toEqual([
@@ -117,7 +126,7 @@ describe('EVIRMA native headers', () => {
     });
     wrapper = mountHeader(ChatHeader);
     expect(wrapper.findAll('button').map(button => button.text())).toEqual([
-      'Продолжить в MAX',
+      'MAX',
     ]);
   });
 
@@ -150,6 +159,50 @@ describe('EVIRMA native headers', () => {
     expect(wrapper.text()).toContain('Мы вернемся как можно скорее');
   });
 
+  // EVIRMA: Custom copy follows availability and resets to the native reply-time text.
+  it('uses the host subtitle online, preserves F6 offline and resets when omitted', async () => {
+    const subtitle = 'Поможем с заказом <b>без HTML</b>';
+    await store.dispatch('appConfig/setAppConfig', {
+      headerSubtitle: subtitle,
+    });
+    clock.value = new Date('2026-10-21T10:00:00Z');
+    wrapper = mountHeader(ChatHeader);
+    expect(wrapper.text()).toContain(subtitle);
+    expect(wrapper.find('b').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain(ru.REPLY_TIME.IN_A_FEW_MINUTES);
+
+    clock.value = new Date('2026-10-21T06:00:00Z');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain('Откроемся утром в 09:00');
+    expect(wrapper.text()).not.toContain(subtitle);
+
+    clock.value = new Date('2026-10-21T10:00:00Z');
+    await store.dispatch('appConfig/setAppConfig', {});
+    expect(store.state.appConfig.headerSubtitle).toBe('');
+    expect(wrapper.text()).toContain(ru.REPLY_TIME.IN_A_FEW_MINUTES);
+    expect(wrapper.text()).not.toContain(subtitle);
+  });
+
+  it('keeps the native reply time online without a subtitle', () => {
+    clock.value = new Date('2026-10-21T10:00:00Z');
+    wrapper = mountHeader(ChatHeader);
+    expect(wrapper.text()).toContain(ru.REPLY_TIME.IN_A_FEW_MINUTES);
+  });
+
+  it('uses the subtitle only with online agents when working hours are disabled', async () => {
+    window.chatwootWebChannel.workingHoursEnabled = false;
+    await store.dispatch('appConfig/setAppConfig', {
+      headerSubtitle: 'Поможем с заказом',
+    });
+    wrapper = mountHeader(ChatHeader);
+    expect(wrapper.text()).toContain('Мы вернемся как можно скорее');
+    expect(wrapper.text()).not.toContain('Поможем с заказом');
+
+    await wrapper.setProps({ availableAgents: [{ id: 1 }] });
+    expect(wrapper.text()).toContain('Поможем с заказом');
+    expect(wrapper.text()).not.toContain('Мы вернемся как можно скорее');
+  });
+
   it('uses the channel timezone rather than the viewer timezone', () => {
     window.chatwootWebChannel.timezone = 'Asia/Kolkata';
     window.chatwootWebChannel.utcOffset = '+05:30';
@@ -166,8 +219,11 @@ describe('EVIRMA native headers', () => {
     wrapper = mountHeader(ChatHeader);
     expect(wrapper.text()).toContain('We open in the morning at 09:00');
     expect(wrapper.findAll('button').map(button => button.text())).toEqual([
-      'Continue in Telegram',
-      'Continue in MAX',
+      'Telegram',
+      'MAX',
     ]);
+    expect(
+      wrapper.findAll('button').map(button => button.attributes('aria-label'))
+    ).toEqual(['Continue in Telegram', 'Continue in MAX']);
   });
 });

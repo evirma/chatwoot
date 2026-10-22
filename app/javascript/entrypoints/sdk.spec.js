@@ -183,6 +183,7 @@ describe('$chatwoot external host configuration', () => {
     window.chatwootSettings = {
       pageUrl: 'https://market.example/products',
       messengerButtons: ['telegram', 'max'],
+      headerSubtitle: 'Поможем с заказом',
     };
     window.chatwootSDK.run({
       baseUrl: 'https://support.evirma.ru',
@@ -190,6 +191,8 @@ describe('$chatwoot external host configuration', () => {
     });
     expect(window.$chatwoot.pageUrl).toBe('https://market.example/products');
     expect(window.$chatwoot.messengerButtons).toEqual(['telegram', 'max']);
+    // EVIRMA: Preserve the optional header copy for config-set delivery.
+    expect(window.$chatwoot.headerSubtitle).toBe('Поможем с заказом');
     window.$chatwoot.setPageUrl('https://market.example/orders');
     expect(window.$chatwoot.pageUrl).toBe('https://market.example/orders');
     expect(IFrameHelper.events.onLocationChange).toHaveBeenCalledWith({});
@@ -202,6 +205,7 @@ describe('$chatwoot external host configuration', () => {
     });
     expect(window.$chatwoot.useExternalConversationToken).toBe(false);
     expect(window.$chatwoot.messengerButtons).toEqual([]);
+    expect(window.$chatwoot.headerSubtitle).toBe('');
   });
 
   // EVIRMA: Invalid host page URLs cannot break widget initialization or replace valid attribution.
