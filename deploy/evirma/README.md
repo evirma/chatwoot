@@ -1,12 +1,20 @@
 # Автовыкладка Chatwoot EVIRMA
 
-Push в `evirma/main` запускает сборку CE-образа на сервере, `db:chatwoot_prepare`,
+Сервер каждые пять минут проверяет вершину `evirma/main` через `git ls-remote`.
+Новый SHA запускает сборку CE-образа на сервере, `db:chatwoot_prepare`,
 перезапуск только `rails` и `sidekiq` и проверку `/api` (JSON с `version`) и
 `/packs/js/sdk.js` (200) в течение пяти минут. Готовый образ повторно не собирается.
 При ошибке запуска или проверки восстанавливаются прежние compose и образ.
 Postgres и Redis не перезапускаются. Параллельный запуск отклоняется через `flock`.
 Журнал: `/srv/docker/chatwoot/deploy-<дата>-<sha7>.log`, последняя строка —
 `DEPLOY_OK <образ>` или `DEPLOY_FAIL <причина>`.
+
+После успешной проверки здоровья SHA атомарно сохраняется в
+`/srv/docker/chatwoot/deployed.sha`. `auto-deploy.sh` пропускает уже выкаченный SHA,
+а также SHA из `failed.sha`: упавший коммит автоматически повторно не выкатывается,
+следующий новый коммит выкатывается. Занятая блокировка тоже означает тихий пропуск;
+проверка не держит блокировку при вызове `deploy.sh`, который берёт её сам.
+Пропуски не пишут в журнал и не создают писем cron.
 
 ## Установка один раз
 
@@ -17,51 +25,66 @@ Postgres и Redis не перезапускаются. Параллельный 
 `${CHATWOOT_IMAGE:-evirma/chatwoot:v4.18.0-evirma-<текущий тег>}`.
 Не задавайте `CHATWOOT_IMAGE` в `.env`: сохранённый в compose тег должен оставаться
 значением по умолчанию. Пути, домен, проект, репозиторий и префикс образа меняются
-в начале `deploy.sh`; при смене каталога исправьте также путь в `ssh-entry.sh`.
+в начале `deploy.sh` и `auto-deploy.sh`; при смене каталога исправьте также пути
+в cron и `ssh-entry.sh`.
 
-Скопируйте оба скрипта на сервер через существующий административный SSH-доступ:
-
-```sh
-scp deploy/evirma/deploy.sh deploy/evirma/ssh-entry.sh root@HOST:/srv/docker/chatwoot/
-ssh root@HOST 'chmod 700 /srv/docker/chatwoot/deploy.sh /srv/docker/chatwoot/ssh-entry.sh'
-ssh-keygen -t ed25519 -N '' -f ./evirma-deploy-key -C github-evirma-deploy
-```
-
-Добавьте **публичный** ключ `evirma-deploy-key.pub` отдельной строкой в
-`/root/.ssh/authorized_keys` (для другого пользователя — в его домашнем каталоге):
-
-```text
-command="/srv/docker/chatwoot/ssh-entry.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA... github-evirma-deploy
-```
-
-Права: каталог `.ssh` — 700, `authorized_keys` — 600. Пользователь должен иметь
-доступ к Docker и каталогу выкладки; по умолчанию используется `root`.
-Файл `known_hosts.evirma` должен содержать ключ SSH-сервера для `HOST`, сверенный
-с отпечатком через доверенный административный доступ. Слепо доверять результату
-`ssh-keyscan` нельзя.
-
-Из локальной копии форка заведите секреты GitHub (ключ и known_hosts читаются из файлов):
+Скопируйте скрипты и файл cron на сервер через существующий административный SSH-доступ:
 
 ```sh
-gh secret set EVIRMA_DEPLOY_SSH_KEY < ./evirma-deploy-key
-gh secret set EVIRMA_DEPLOY_KNOWN_HOSTS < ./known_hosts.evirma
-gh secret set EVIRMA_DEPLOY_HOST --body 'HOST'
-gh secret set EVIRMA_DEPLOY_USER --body 'root'
-gh secret set EVIRMA_DEPLOY_PORT --body 'PORT'
+scp deploy/evirma/deploy.sh deploy/evirma/auto-deploy.sh root@HOST:/srv/docker/chatwoot/
+ssh root@HOST 'chmod 700 /srv/docker/chatwoot/deploy.sh /srv/docker/chatwoot/auto-deploy.sh'
+scp deploy/evirma/cron.d-evirma-chatwoot-deploy root@HOST:/etc/cron.d/evirma-chatwoot-deploy
+ssh root@HOST 'chmod 644 /etc/cron.d/evirma-chatwoot-deploy'
 ```
 
-Для порта не 22 строка в `known_hosts.evirma` имеет вид `[HOST]:PORT ключ`.
+Cron должен быть запущен. Задание выполняется от `root`, PATH задан в файле cron,
+вывод перенаправлен в `/dev/null`: журнал пишет сам скрипт. При первой проверке без
+`deployed.sha` текущая вершина ветки будет выкачена.
 
-Не добавляйте приватный ключ в репозиторий. После сохранения секрета уберите его
-из рабочей копии в защищённое хранилище. Скрипты на сервере устанавливаются отдельно:
-workflow передаёт только SHA и не обновляет `deploy.sh`/`ssh-entry.sh`.
+Workflow `.github/workflows/evirma-deploy.yml` удалён, чтобы при восстановлении Actions
+не возникла двойная выкладка. Секреты GitHub `EVIRMA_DEPLOY_SSH_KEY`,
+`EVIRMA_DEPLOY_KNOWN_HOSTS`, `EVIRMA_DEPLOY_HOST`, `EVIRMA_DEPLOY_USER` и
+`EVIRMA_DEPLOY_PORT` больше не нужны, их можно удалить.
+
+## Журнал и повтор упавшего коммита
+
+На сервере:
+
+```sh
+tail -f /srv/docker/chatwoot/auto-deploy.log
+rm -f /srv/docker/chatwoot/failed.sha
+```
+
+Журнал содержит вывод выкладки и итог одной строкой: дата, SHA, `DEPLOY_OK` или
+`DEPLOY_FAIL exit=<код>`. Ошибки получения SHA отмечаются `REMOTE_FAIL`.
+Удаление `failed.sha` разрешает повтор текущего упавшего коммита при следующем
+срабатывании cron. Отдельные подробные журналы `deploy-<дата>-<sha7>.log` сохраняются.
+Скрипты и файл cron обновляются на сервере отдельно от исходников приложения.
 
 ## Ручная выкладка и откат
 
 На сервере: `/srv/docker/chatwoot/deploy.sh <полный SHA из 40 hex-символов>`.
 Снаружи ограниченным ключом: `ssh -i ./evirma-deploy-key root@HOST 'deploy <sha40>'`.
-В GitHub Actions можно вызвать `Deploy EVIRMA Chatwoot` через Run workflow с полным SHA;
-пустой ввод использует SHA выбранного запуска. `build.sh` остаётся без изменений.
+Для сохранения другого SHA временно отключите задание cron: иначе следующая проверка
+вернёт вершину `evirma/main`. `build.sh` остаётся без изменений.
+
+Для ручного запуска по ключу сохранён `ssh-entry.sh`. Если он ещё не установлен:
+
+```sh
+scp deploy/evirma/ssh-entry.sh root@HOST:/srv/docker/chatwoot/
+ssh root@HOST 'chmod 700 /srv/docker/chatwoot/ssh-entry.sh'
+ssh-keygen -t ed25519 -N '' -f ./evirma-deploy-key -C evirma-deploy
+```
+
+Добавьте **публичный** ключ `evirma-deploy-key.pub` отдельной строкой в
+`/root/.ssh/authorized_keys`:
+
+```text
+command="/srv/docker/chatwoot/ssh-entry.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA... evirma-deploy
+```
+
+Права: каталог `.ssh` — 700, `authorized_keys` — 600. Приватный ключ храните вне
+репозитория. Ключ SSH-сервера сверяйте через доверенный административный доступ.
 
 Перед заменой compose сохраняется рядом как
 `compose.evirma.yml.<дата>.<прежний тег>.bak`; имя копии видно в журнале при откате.
@@ -85,4 +108,11 @@ curl -fsS -o /dev/null https://support.evirma.ru/packs/js/sdk.js
 копия БД; несовместимые миграции требуют отдельного плана восстановления данных.
 Старые образы и резервные compose автоматически не удаляются.
 
-Локальная проверка входа SSH: `bash deploy/evirma/test-ssh-entry.sh`.
+Локальные проверки (для проверки блокировки нужен `flock` из util-linux):
+
+```sh
+bash -n deploy/evirma/deploy.sh
+bash -n deploy/evirma/auto-deploy.sh
+bash deploy/evirma/test-auto-deploy.sh
+bash deploy/evirma/test-ssh-entry.sh
+```
