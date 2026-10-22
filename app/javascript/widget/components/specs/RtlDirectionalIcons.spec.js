@@ -15,7 +15,7 @@ const store = createStore({
   modules: {
     appConfig: {
       namespaced: true,
-      getters: { getWidgetColor: () => '#1f93ff' },
+      getters: { getWidgetColor: () => '#1f93ff', getAppConfig: () => ({}) },
     },
   },
 });
@@ -24,6 +24,7 @@ describe('widget directional icons in RTL', () => {
   it('mirrors the header back chevron', () => {
     const wrapper = shallowMount(ChatHeader, {
       props: { showBackButton: true },
+      global: { plugins: [store] },
     });
 
     expect(wrapper.findComponent(FluentIcon).classes()).toContain(

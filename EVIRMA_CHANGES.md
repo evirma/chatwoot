@@ -210,3 +210,40 @@ bundle exec rubocop app/services/widget/bootstrap_contact_service.rb app/control
 
 F9 review follow-up: bootstrap retries the full transaction once for deadlocks and identifier uniqueness races; HTTP/live cross-channel history requires a verified contact inbox and an identifier; setUser verifies the session only after successful identification.
 RSpec regressions cover retry success/exhaustion, unrelated validation errors, unverified history recipients and failed identification (422); RSpec is run by the coordinator.
+
+## Шапка виджета: компактные мессенджеры и своя подпись
+
+EVIRMA: `MessengerButtons.vue` показывает Telegram и MAX в одну строку, с локальными
+SVG слева и короткими названиями. Полный перевод действия остаётся в `title` и
+`aria-label`; событие `chatwoot:messenger-requested` с `{ channel }` сохранено.
+Telegram использует `#229ED9`, знак MAX из https://go.max.ru/brandbook — цвет текста
+виджета, включая тёмную тему. Внешних загрузок и новых зависимостей нет.
+
+Необязательная строка `window.chatwootSettings.headerSubtitle` задаётся до запуска
+SDK. `entrypoints/sdk.js` сохраняет её в `$chatwoot`, `sdk/IFrameHelper.js` передаёт
+через `config-set`, `widget/store/modules/appConfig.js` хранит её с пустым значением
+по умолчанию. `ChatHeader.vue` показывает подпись вместо времени ответа только
+в сети, максимум в две строки. Вне рабочего времени остаётся F6; без настройки —
+штатный статус. Большая шапка и отдельная карточка доступности сохраняют свои тексты.
+Контейнер текста компактной шапки сжимается, аватар и кнопки действий — нет.
+
+Проверки: `components/specs/EvirmaHeader.spec.js` — короткие подписи, SVG, доступные
+названия, прежние события, приоритет F6, текст без настройки и смена статуса;
+`entrypoints/sdk.spec.js`, `sdk/specs/IFrameHelper.spec.js`, `widget/specs/App.spec.js` —
+доставка настройки от хоста. Общий прогон:
+`TZ=UTC node_modules/.bin/vitest run --no-coverage app/javascript/entrypoints app/javascript/sdk app/javascript/widget`;
+ESLint — по изменённым JS/Vue-файлам. При слиянии upstream повторить проверки шапки
+на ширине 360–400 px в светлой и тёмной теме.
+
+Исходники SDK изменены: для доставки `headerSubtitle` нужна пересборка
+`pnpm build:sdk` и публикация нового `public/packs/js/sdk.js` вместе с виджетом.
+`enterprise/` и git не менялись.
+
+Локальный результат: 55 файлов / 439 тестов Vitest прошли, ESLint изменённых
+JS/Vue-файлов — без замечаний. Временный браузерный стенд с настоящими компонентами
+и стилями проверен при ширине контейнера 360 и 400 px в обеих темах, с аватаром
+и тремя кнопками действий: мессенджеры в одну строку без пересечений, подпись
+не выше двух строк, включая длинный текст без пробелов; F6 вне сети сохранён.
+HTTP-сервер запрещён песочницей (`listen EPERM`), поэтому стенд собран отдельно
+во временную папку и открыт как локальный файл. Проверка живого расширения на WB
+и публикация собранного SDK не выполнялись.

@@ -231,6 +231,7 @@ describe('IFrameHelper EVIRMA messages', () => {
   it('uses pageUrl for initial configuration and navigation', () => {
     window.$chatwoot.pageUrl = 'https://market.example:8443/orders/42';
     window.$chatwoot.messengerButtons = ['telegram', 'max'];
+    window.$chatwoot.headerSubtitle = 'Поможем с заказом';
     vi.spyOn(IFrameHelper, 'onLoad').mockImplementation(() => {});
     vi.spyOn(IFrameHelper, 'toggleCloseButton').mockImplementation(() => {});
     IFrameHelper.events.loaded({
@@ -246,6 +247,7 @@ describe('IFrameHelper EVIRMA messages', () => {
     expect(messages[0]).toMatchObject({
       event: 'config-set',
       messengerButtons: ['telegram', 'max'],
+      headerSubtitle: 'Поможем с заказом',
       referrerURL: 'https://market.example:8443/orders/42',
       referrerHost: 'market.example:8443',
     });

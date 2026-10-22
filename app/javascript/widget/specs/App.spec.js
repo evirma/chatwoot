@@ -296,6 +296,8 @@ describe('App availability-changed', () => {
       referrerURL: 'https://market.example/orders/42',
       referrerHost: 'market.example',
       messengerButtons: ['max'],
+      // EVIRMA: Apply the host subtitle through the real config-set listener.
+      headerSubtitle: 'Поможем с заказом',
     };
     window.dispatchEvent(
       new MessageEvent('message', {
@@ -306,6 +308,7 @@ describe('App availability-changed', () => {
     expect(fetchConversations).toHaveBeenCalledOnce();
     expect(initCampaigns).not.toHaveBeenCalled();
     expect(store.state.appConfig.messengerButtons).toEqual(['max']);
+    expect(store.state.appConfig.headerSubtitle).toBe('Поможем с заказом');
     window.dispatchEvent(
       new MessageEvent('message', {
         data: 'chatwoot-widget:{"event":"change-url","referrerURL":"https://market.example/orders/42","referrerHost":"market.example"}',

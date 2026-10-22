@@ -2,6 +2,8 @@
 // EVIRMA: Keep the header presence indicator on the same schedule clock as its status.
 import { computed, inject, toRef } from 'vue';
 import { useRouter } from 'vue-router';
+// EVIRMA: Read the optional host subtitle without changing other availability cards.
+import { useMapGetter } from 'dashboard/composables/store';
 import FluentIcon from 'shared/components/FluentIcon/Index.vue';
 import HeaderActions from './HeaderActions.vue';
 // EVIRMA: Offer the configured messenger actions in the compact header.
@@ -21,10 +23,11 @@ const props = defineProps({
 });
 
 const availableAgents = toRef(props, 'availableAgents');
+const appConfig = useMapGetter('appConfig/getAppConfig');
 
 const router = useRouter();
 // EVIRMA: Advance the compact header when the shared app polling clock changes.
-const { isOnline } = useAvailability(
+const { isOnline, isOutOfOffice, opensAt } = useAvailability(
   availableAgents,
   inject(
     EVIRMA_AVAILABILITY_TIME,
@@ -39,7 +42,8 @@ const onBackButtonClick = () => {
 
 <template>
   <header class="flex justify-between w-full p-5 bg-n-background gap-2">
-    <div class="flex items-center">
+    <!-- EVIRMA: Let header copy shrink while keeping the avatar and actions intact. -->
+    <div class="flex flex-1 min-w-0 items-center">
       <button
         v-if="showBackButton"
         class="px-2 ltr:-ml-3 rtl:-mr-3"
@@ -53,21 +57,29 @@ const onBackButtonClick = () => {
       </button>
       <img
         v-if="avatarUrl"
-        class="w-8 h-8 ltr:mr-3 rtl:ml-3 rounded-full"
+        class="w-8 h-8 shrink-0 ltr:mr-3 rtl:ml-3 rounded-full"
         :src="avatarUrl"
         alt="avatar"
       />
-      <div class="flex flex-col gap-1">
+      <div class="flex flex-col min-w-0 gap-1">
         <div
           class="flex items-center text-base font-medium leading-4 text-n-slate-12"
         >
-          <span v-dompurify-html="title" class="ltr:mr-1 rtl:ml-1" />
+          <span v-dompurify-html="title" class="min-w-0 break-words me-1" />
           <div
-            :class="`h-2 w-2 rounded-full
+            :class="`h-2 w-2 shrink-0 rounded-full
               ${isOnline ? 'bg-n-teal-10' : 'hidden'}`"
           />
         </div>
+        <!-- EVIRMA: Replace the availability copy except for the scheduled F6 opening time. -->
+        <span
+          v-if="appConfig.headerSubtitle && !(isOutOfOffice && opensAt)"
+          class="text-xs leading-4 text-n-slate-11 line-clamp-2 break-words"
+        >
+          {{ appConfig.headerSubtitle }}
+        </span>
         <AvailabilityContainer
+          v-else
           :agents="availableAgents"
           :show-header="false"
           :show-avatars="false"
@@ -77,6 +89,6 @@ const onBackButtonClick = () => {
         <MessengerButtons />
       </div>
     </div>
-    <HeaderActions :show-popout-button="showPopoutButton" />
+    <HeaderActions class="shrink-0" :show-popout-button="showPopoutButton" />
   </header>
 </template>

@@ -227,6 +227,8 @@ export const IFrameHelper = {
         skipHome: window.$chatwoot.skipHome,
         // EVIRMA: Deliver optional messenger actions and the external page URL.
         messengerButtons: window.$chatwoot.messengerButtons,
+        // EVIRMA: Deliver optional online header copy through the existing config channel.
+        headerSubtitle: window.$chatwoot.headerSubtitle,
         // EVIRMA: Attach host metadata only when the widget creates a conversation.
         conversationCustomAttributes:
           window.$chatwoot.conversationCustomAttributes,
