@@ -10,7 +10,8 @@
 `DEPLOY_OK`/`DEPLOY_FAIL`; существующий серверный `build.sh` не меняется.
 
 `ssh-entry.sh` допускает только `deploy <sha40>` и передаёт SHA без выполнения строки shell.
-`.github/workflows/evirma-deploy.yml` вызывает его при push в `evirma/main` или вручную,
+`.github/workflows/evirma-deploy.yml` вызывает его при слиянии PR в `evirma/main` или вручную
+(события push в этом форке workflow не запускают, события PR — запускают),
 используя отдельный SSH-ключ и проверенный known_hosts из секретов GitHub.
 Установка, секреты, ручная выкладка и откат описаны в `deploy/evirma/README.md`;
 `test-ssh-entry.sh` проверяет разрешённую команду, возврат её кода и отказ посторонним командам.

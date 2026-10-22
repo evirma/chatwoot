@@ -1,7 +1,10 @@
 name: Deploy EVIRMA Chatwoot
 
+# EVIRMA: push events do not start workflows in this fork, while pull_request events do,
+# so a merged pull request into evirma/main is the release trigger.
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches:
       - evirma/main
   workflow_dispatch:
@@ -19,12 +22,13 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - name: Deploy over SSH
         env:
-          DEPLOY_SHA: ${{ inputs.sha || github.sha }}
+          DEPLOY_SHA: ${{ inputs.sha || github.event.pull_request.merge_commit_sha || github.sha }}
           DEPLOY_SSH_KEY: ${{ secrets.EVIRMA_DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.EVIRMA_DEPLOY_KNOWN_HOSTS }}
           DEPLOY_HOST: ${{ secrets.EVIRMA_DEPLOY_HOST }}
