@@ -111,6 +111,8 @@ while (( SECONDS < deadline )); do
       [[ $(curl -sS --connect-timeout 5 --max-time "$((remaining < 10 ? remaining : 10))" \
         -o /dev/null -w '%{http_code}' "$DOMAIN/packs/js/sdk.js") == 200 ]]; then
       rollback_needed=false
+      printf '%s\n' "$sha" > "$DEPLOY_DIR/deployed.sha.tmp"
+      mv "$DEPLOY_DIR/deployed.sha.tmp" "$DEPLOY_DIR/deployed.sha"
       exit 0
     fi
   fi

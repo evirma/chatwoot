@@ -1,0 +1,2 @@
+PATH=/usr/local/bin:/usr/bin:/bin
+*/5 * * * * root /srv/docker/chatwoot/auto-deploy.sh > /dev/null 2>&1
