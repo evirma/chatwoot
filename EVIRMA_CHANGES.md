@@ -1,5 +1,20 @@
 # Правки EVIRMA поверх Chatwoot v4.18.0
 
+## Тихий импорт SaleBot
+
+`deploy/evirma/salebot/import.rb` — одноразовый rails runner для аккаунта 1: переносит
+карточки Telegram/MAX из JSONL, атрибуты и метки воронки из CSV, историю и ссылки вложений.
+Dry-run включён по умолчанию и не пишет в БД/Redis; запись разрешена только `--apply`.
+Создание через `insert_all!`, обновление через `update_columns` обходят callbacks, отправки,
+уведомления и события. Повторный запуск находит связи по source_id и пропускает сообщения
+`salebot:*` во всех беседах ContactInbox. MAX mapping выгружается для `support.max_contact`.
+Инструкция переключения ботов, московское время, проверки и откат —
+`deploy/evirma/salebot/README.md`; синтетические входные данные — в соседнем `fixtures/`.
+RSpec: `spec/evirma/evirma_salebot_import_spec.rb`, включая отсутствие заданий/событий и read-only
+dry-run. При обновлении upstream сверить enum, Telegram source_id/chat_id, схему Tag/Tagging,
+`cached_label_list`, ContactInbox pubsub_token и механизм кеша меток. Схема БД, штатные
+исходники и `enterprise/` не меняются; новых зависимостей нет.
+
 ## Автовыкладка
 
 `deploy/evirma/deploy.sh` собирает CE-образ заданного SHA (готовый образ переиспользует),
