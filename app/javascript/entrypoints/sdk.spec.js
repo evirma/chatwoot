@@ -62,6 +62,20 @@ describe('$chatwoot.setUser', () => {
       user: secondUser,
     });
   });
+
+  // EVIRMA: Logout must clear every identity that could be replayed after iframe reload.
+  it('clears the current and bootstrap identities on reset', () => {
+    window.$chatwoot.bootstrapUser = { identifier: 'bootstrap-user' };
+    window.$chatwoot.conversationToken = 'user-token';
+    window.$chatwoot.setUser('customer', { name: 'Customer' });
+
+    window.$chatwoot.reset();
+
+    expect(window.$chatwoot.user).toBeNull();
+    expect(window.$chatwoot.identifier).toBeNull();
+    expect(window.$chatwoot.bootstrapUser).toBeNull();
+    expect(window.$chatwoot.conversationToken).toBeNull();
+  });
 });
 
 // EVIRMA: Verify the host setting reaches the SDK configuration.
@@ -137,6 +151,8 @@ describe('$chatwoot external host configuration', () => {
       window.chatwootSettings = { conversationToken };
       const getCookie = vi.spyOn(Cookies, 'get');
       const setCookie = vi.spyOn(Cookies, 'set');
+      // EVIRMA: Reset and subsequent login must leave external-mode cookies untouched.
+      const removeCookie = vi.spyOn(Cookies, 'remove');
       window.chatwootSDK.run({
         baseUrl: 'https://support.evirma.ru',
         websiteToken: 'website-token',
@@ -151,8 +167,13 @@ describe('$chatwoot external host configuration', () => {
       ).toHaveLength(2);
       expect(window.$chatwoot.useExternalConversationToken).toBe(true);
       expect(window.$chatwoot.conversationToken).toBe(conversationToken);
+      // EVIRMA: A new login after logout still uses the cookie-free setUser path.
+      window.$chatwoot.reset();
+      expect(window.$chatwoot.conversationToken).toBeNull();
+      window.$chatwoot.setUser('next-customer', { name: 'Next customer' });
       expect(getCookie).not.toHaveBeenCalled();
       expect(setCookie).not.toHaveBeenCalled();
+      expect(removeCookie).not.toHaveBeenCalled();
     }
   );
 

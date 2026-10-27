@@ -261,7 +261,11 @@ export const IFrameHelper = {
         document.addEventListener(e, IFrameHelper.setupAudioListeners, false);
       });
 
-      if (!window.$chatwoot.resetTriggered) {
+      // EVIRMA: External-token hosts need ready after reset; cookie-backed hosts keep upstream behavior.
+      if (
+        !window.$chatwoot.resetTriggered ||
+        window.$chatwoot.useExternalConversationToken
+      ) {
         dispatchWindowEvent({ eventName: CHATWOOT_READY });
       }
     },

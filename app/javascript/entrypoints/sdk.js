@@ -237,6 +237,9 @@ const runSDK = ({ baseUrl, websiteToken }) => {
         IFrameHelper.events.toggleBubble();
       }
 
+      // EVIRMA: Clear identity before reload so loaded cannot restore the previous user.
+      window.$chatwoot.user = null;
+      window.$chatwoot.identifier = null;
       // EVIRMA: Reset host persistence even when conversation cookies are disabled.
       window.$chatwoot.bootstrapUser = null;
       window.$chatwoot.conversationToken = null;
