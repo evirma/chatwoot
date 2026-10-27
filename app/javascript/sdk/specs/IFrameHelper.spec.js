@@ -162,6 +162,50 @@ describe('IFrameHelper EVIRMA messages', () => {
     );
   });
 
+  // EVIRMA: Replay identity set before loaded, including while reset is reloading the frame.
+  it.each([false, true])(
+    'replays the complete set-user payload on loaded after reset=%s',
+    afterReset => {
+      delete window.$chatwoot;
+      window.chatwootSettings = {
+        conversationToken: null,
+        hideMessageBubble: true,
+      };
+      vi.spyOn(IFrameHelper, 'createFrame').mockImplementation(() => {});
+      vi.spyOn(IFrameHelper, 'onLoad').mockImplementation(() => {});
+      vi.spyOn(IFrameHelper, 'toggleCloseButton').mockImplementation(() => {});
+      window.chatwootSDK.run({
+        baseUrl: 'https://support.evirma.ru',
+        websiteToken: 'website',
+      });
+      const loaded = {
+        config: {
+          authToken: 'guest-token',
+          channelConfig: { widgetColor: '#000' },
+        },
+      };
+      if (afterReset) {
+        IFrameHelper.events.loaded(loaded);
+        window.$chatwoot.reset();
+        postMessage = vi.spyOn(iframe.contentWindow, 'postMessage');
+      }
+      const user = {
+        identifier_hash: 'signed-hash',
+        name: 'Customer',
+        email: 'customer@example.com',
+      };
+      window.$chatwoot.setUser('customer', user);
+      postMessage.mockClear();
+
+      IFrameHelper.events.loaded(loaded);
+
+      expect(postMessage).toHaveBeenLastCalledWith(
+        `chatwoot-widget:${JSON.stringify({ event: 'set-user', identifier: 'customer', user })}`,
+        'https://support.evirma.ru'
+      );
+    }
+  );
+
   // EVIRMA: Login from the post-reset ready handler keeps the guest conversation token.
   it('identifies a guest after ready with the complete set-user payload', () => {
     delete window.$chatwoot;

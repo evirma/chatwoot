@@ -252,7 +252,11 @@ export const IFrameHelper = {
       IFrameHelper.toggleCloseButton();
 
       if (window.$chatwoot.user) {
-        IFrameHelper.sendMessage('set-user', window.$chatwoot.user);
+        // EVIRMA: Replay pre-load identity using the same payload as SDK setUser.
+        IFrameHelper.sendMessage('set-user', {
+          identifier: window.$chatwoot.identifier,
+          user: window.$chatwoot.user,
+        });
       }
 
       window.playAudioAlert = () => {};
