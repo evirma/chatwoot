@@ -262,3 +262,38 @@ JS/Vue-файлов — без замечаний. Временный брауз
 HTTP-сервер запрещён песочницей (`listen EPERM`), поэтому стенд собран отдельно
 во временную папку и открыт как локальный файл. Проверка живого расширения на WB
 и публикация собранного SDK не выполнялись.
+
+## Ротация гостевого JWT при подписанном setUser
+
+EVIRMA: `app/controllers/api/v1/widget/contacts_controller.rb#set_user` после
+успешной идентификации меняет `source_id` непроверенного `contact_inbox` на
+`SecureRandom.uuid` и выдаёт новый `widget_auth_token` через `Widget::TokenService`
+с `source_id` и `inbox_id`, как `WidgetHelper#build_contact_inbox_with_token`.
+Новый `source_id` и `hmac_verified: true` сохраняются одним `update!`;
+связь и её беседы сохраняются. Старый JWT перестаёт находить связь и получает 404.
+Повторный подписанный setUser проверенной связи и optional setUser без HMAC
+не меняют токен. Ветка `a_different_contact?` использует уже выданный ею JWT.
+
+`set_user.json.jbuilder:5` уже возвращает JWT; `widget/store/modules/contacts.js`
+передаёт его через `updateWidgetAuthToken` в заголовок запросов и событие
+`setAuthCookie`, которое `sdk/IFrameHelper.js` сохраняет в cookie. SDK не менялся.
+
+`pubsub_token` намеренно сохранён: `set_user.json.jbuilder` его не возвращает,
+а `widget/store/modules/contacts.js#setUser` не обновляет подписку из ответа.
+Первичная загрузка использует `widget/helpers/bootstrap.js`, переподключение
+при слиянии — `widget/helpers/actionCable.js#onContactMerge`.
+Остаточный риск: известный гостевой pubsub_token продолжает работать в
+`app/channels/room_channel.rb` и получать события после идентификации.
+Эта правка отзывает старый JWT для HTTP API, но не закрывает этот путь ActionCable.
+
+В `spec/controllers/api/v1/widget/contacts_controller_spec.rb` добавлены три
+request-примера: гостевая беседа до входа, слияние с опознанным контактом,
+404 со старым JWT и доступ к его проверенной беседе с новым; повторный setUser;
+optional setUser без подписи. Первый также проверяет сохранение contact_inbox
+и гостевой беседы.
+
+RSpec в контейнере стенда: `spec/controllers/api/v1/widget/contacts_controller_spec.rb`
+— 25 из 25; на контроллере до правки первый новый пример падает (старый JWT
+открывает беседы опознанного контакта). Во всём `spec/controllers/api/v1/widget`
+ещё два давних падения (toggle_status и dyte) есть и до правки, и после.
+Зависимостей и изменений схемы нет.

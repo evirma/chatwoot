@@ -194,6 +194,74 @@ RSpec.describe '/api/v1/widget/contacts', type: :request do
     let(:correct_identifier_hash) { OpenSSL::HMAC.hexdigest('sha256', web_widget.hmac_token, params[:identifier].to_s) }
     let(:incorrect_identifier_hash) { 'test' }
 
+    # EVIRMA: A guest credential must not gain access to the identified contact's conversations.
+    it 'revokes the guest token and returns a token for the identified contact after HMAC verification' do
+      guest_conversation = create(:conversation, account: account, inbox: web_widget.inbox, contact: contact, contact_inbox: contact_inbox)
+      identified_contact = create(:contact, account: account, identifier: params[:identifier])
+      verified_inbox = create(:contact_inbox, contact: identified_contact, inbox: web_widget.inbox, hmac_verified: true)
+      identified_conversation = create(:conversation, account: account, inbox: web_widget.inbox,
+                                                     contact: identified_contact, contact_inbox: verified_inbox)
+      old_source_id = contact_inbox.source_id
+
+      get '/api/v1/widget/conversations', params: { website_token: web_widget.website_token },
+                                          headers: { 'X-Auth-Token' => token }, as: :json
+      expect(response).to have_http_status(:success)
+      expect(response.parsed_body['id']).to eq(guest_conversation.display_id)
+
+      patch '/api/v1/widget/contact/set_user',
+            params: params.merge(identifier_hash: correct_identifier_hash),
+            headers: { 'X-Auth-Token' => token }, as: :json
+
+      expect(response).to have_http_status(:success)
+      new_token = response.parsed_body['widget_auth_token']
+
+      get '/api/v1/widget/conversations', params: { website_token: web_widget.website_token },
+                                          headers: { 'X-Auth-Token' => token }, as: :json
+      expect(response).to have_http_status(:not_found)
+      expect(new_token).to be_present
+      expect(contact_inbox.reload).to be_hmac_verified
+      expect(contact_inbox.source_id).not_to eq(old_source_id)
+      expect(contact_inbox.contact_id).to eq(identified_contact.id)
+      expect(guest_conversation.reload.contact_inbox_id).to eq(contact_inbox.id)
+
+      get '/api/v1/widget/conversations', params: { website_token: web_widget.website_token },
+                                          headers: { 'X-Auth-Token' => new_token }, as: :json
+      expect(response).to have_http_status(:success)
+      expect(response.parsed_body['id']).to eq(identified_conversation.display_id)
+    end
+
+    # EVIRMA: Repeated signed setUser calls must preserve the existing verified session.
+    it 'keeps the token and source id for an already verified contact with the same identifier' do
+      contact.update!(identifier: params[:identifier])
+      contact_inbox.update!(hmac_verified: true)
+      old_source_id = contact_inbox.source_id
+
+      patch '/api/v1/widget/contact/set_user',
+            params: params.merge(identifier_hash: correct_identifier_hash),
+            headers: { 'X-Auth-Token' => token }, as: :json
+
+      expect(response).to have_http_status(:success)
+      expect(response.parsed_body).not_to have_key('widget_auth_token')
+      expect(contact_inbox.reload.source_id).to eq(old_source_id)
+    end
+
+    # EVIRMA: Optional unsigned identification retains its existing guest credentials.
+    context 'without mandatory HMAC' do
+      let(:web_widget) { create(:channel_widget, account: account, hmac_mandatory: false) }
+
+      it 'keeps the token and source id when no identifier hash is supplied' do
+        old_source_id = contact_inbox.source_id
+
+        patch '/api/v1/widget/contact/set_user', params: params,
+                                                 headers: { 'X-Auth-Token' => token }, as: :json
+
+        expect(response).to have_http_status(:success)
+        expect(response.parsed_body).not_to have_key('widget_auth_token')
+        expect(contact_inbox.reload.source_id).to eq(old_source_id)
+        expect(contact_inbox).not_to be_hmac_verified
+      end
+    end
+
     # EVIRMA: Failed signed identification must not leave a verified guest session behind.
     it 'does not verify the contact inbox when identification returns 422' do
       patch '/api/v1/widget/contact/set_user',

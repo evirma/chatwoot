@@ -22,8 +22,15 @@ class Api::V1::Widget::ContactsController < Api::V1::Widget::BaseController
 
     identify_contact(contact)
 
-    # EVIRMA: A failed identification must never persist a verified guest session.
-    @contact_inbox.update(hmac_verified: true) if should_verify_hmac?
+    # EVIRMA: Revoke guest credentials only after successful identification; a different contact already has a new token.
+    return unless should_verify_hmac?
+
+    unless @contact_inbox.hmac_verified? || @widget_auth_token.present?
+      @contact_inbox.source_id = SecureRandom.uuid
+      payload = { source_id: @contact_inbox.source_id, inbox_id: @web_widget.inbox.id }
+      @widget_auth_token = ::Widget::TokenService.new(payload: payload).generate_token
+    end
+    @contact_inbox.update!(hmac_verified: true)
   end
 
   # TODO : clean up this with proper routes delete contacts/custom_attributes
