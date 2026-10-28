@@ -241,6 +241,37 @@ RSpec.describe '/api/v1/widget/config', type: :request do
       context 'without a signature' do
         let(:identifier_hash) { nil }
 
+        # EVIRMA: A signed tab can rotate the cached guest link before unsigned bootstrap reloads it.
+        it 'returns a new guest after a signed setUser rotates the cached link' do
+          original_source_id = contact_inbox.source_id
+          original_pubsub_token = contact_inbox.pubsub_token
+          signed_status = nil
+          allow(Widget::BootstrapContactService).to receive(:new).and_wrap_original do |original, **attributes|
+            service = original.call(**attributes)
+            signed_session = ActionDispatch::Integration::Session.new(Rails.application)
+            signed_hash = OpenSSL::HMAC.hexdigest('sha256', web_widget.hmac_token, identifier)
+            signed_session.patch '/api/v1/widget/contact/set_user',
+                                 params: user.merge(website_token: web_widget.website_token, identifier_hash: signed_hash),
+                                 headers: { 'X-Auth-Token' => token }, as: :json
+            signed_status = signed_session.response.status
+            service
+          end
+
+          post '/api/v1/widget/config', params: params, headers: { 'X-Auth-Token' => token }, as: :json
+
+          signed_link = ContactInbox.find(contact_inbox.id)
+          expect(signed_status).to eq(200)
+          expect(signed_link).to have_attributes(contact_id: contact.id, hmac_verified: true)
+          expect(signed_link.source_id).not_to eq(original_source_id)
+          expect(signed_link.pubsub_token).not_to eq(original_pubsub_token)
+          expect(response).to have_http_status(:success)
+          body = response.parsed_body
+          decoded = Widget::TokenService.new(token: body['website_channel_config']['auth_token']).decode_token
+          guest_link = ContactInbox.find_by!(inbox_id: web_widget.inbox.id, source_id: decoded[:source_id])
+          expect(guest_link).not_to be_hmac_verified
+          expect(body['contact']).to include('id' => guest_link.contact_id, 'identifier' => nil, 'pubsub_token' => guest_link.pubsub_token)
+        end
+
         it 'rejects an unsigned user when HMAC is mandatory' do
           web_widget.update!(hmac_mandatory: true)
           post '/api/v1/widget/config', params: params, as: :json

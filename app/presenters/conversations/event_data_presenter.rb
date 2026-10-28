@@ -4,7 +4,8 @@ class Conversations::EventDataPresenter < SimpleDelegator
       additional_attributes: additional_attributes,
       can_reply: can_reply?,
       channel: inbox.try(:channel_type),
-      contact_inbox: contact_inbox,
+      # EVIRMA: Never broadcast a rotated widget subscription token to recipients selected before rotation.
+      contact_inbox: contact_inbox&.as_json(except: :pubsub_token),
       id: display_id,
       inbox_id: inbox_id,
       messages: push_messages,

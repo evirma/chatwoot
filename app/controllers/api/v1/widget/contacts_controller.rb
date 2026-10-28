@@ -11,11 +11,12 @@ class Api::V1::Widget::ContactsController < Api::V1::Widget::BaseController
   end
 
   def set_user
-    # EVIRMA: Serialize identity changes with signed bootstrap and recheck the JWT after the lock.
-    @contact_inbox.with_lock(requires_new: true) do
-      raise ActiveRecord::RecordNotFound unless @contact_inbox.source_id == auth_token_params[:source_id]
+    # EVIRMA: Lock the cached owner before the link, then reject stale JWTs or changed ownership.
+    @contact.with_lock(requires_new: true) do
+      @contact_inbox.lock!
+      raise ActiveRecord::RecordNotFound unless @contact_inbox.source_id == auth_token_params[:source_id] &&
+                                                @contact_inbox.contact_id == @contact.id
 
-      @contact = @contact_inbox.contact.lock!
       verified_same_identifier = @contact_inbox.hmac_verified? && @contact.identifier == permitted_params[:identifier]
       widget_auth_token = nil
       @contact_inbox, widget_auth_token = build_contact_inbox_with_token(@web_widget) if a_different_contact?

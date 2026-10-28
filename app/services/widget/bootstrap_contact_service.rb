@@ -25,14 +25,15 @@ class Widget::BootstrapContactService
 
   private
 
-  # EVIRMA: Lock the link first, matching setUser's lock order and rejecting stale cached ownership.
+  # EVIRMA: Lock the cached owner before the link and reject ownership changed while waiting.
   def locked_guest_contact
     return unless contact_inbox
 
-    @contact_inbox = web_widget.inbox.contact_inboxes.lock.find_by(id: contact_inbox.id)
-    return unless @contact_inbox
+    guest = web_widget.account.contacts.lock.find_by(id: contact_inbox.contact_id)
+    return unless guest
 
-    web_widget.account.contacts.lock.find_by(id: contact_inbox.contact_id)
+    @contact_inbox = web_widget.inbox.contact_inboxes.lock.find_by(id: contact_inbox.id)
+    guest if @contact_inbox&.contact_id == guest.id
   end
 
   def find_or_create_contact
@@ -84,7 +85,16 @@ class Widget::BootstrapContactService
        (contact_inbox.contact.identifier.present? && contact_inbox.contact.identifier != user[:identifier])
       @contact_inbox = web_widget.create_contact_inbox(additional_attributes)
     end
+    # EVIRMA: An unsigned request cannot return credentials rotated by a signed request after token resolution.
+    source_id = contact_inbox.source_id
     ContactIdentifyAction.new(contact: contact_inbox.contact, params: user, discard_invalid_attrs: true).perform
+    contact_inbox_or_new_guest(source_id)
+  end
+
+  def contact_inbox_or_new_guest(source_id)
     contact_inbox.reload
+    return web_widget.create_contact_inbox(additional_attributes) if contact_inbox.source_id != source_id
+
+    contact_inbox
   end
 end
