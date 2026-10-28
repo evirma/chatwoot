@@ -1,5 +1,6 @@
-import { API } from 'widget/helpers/axios';
+import { API, setHeader } from 'widget/helpers/axios';
 import { sendMessage } from 'widget/helpers/utils';
+import ActionCableConnector from 'widget/helpers/actionCable';
 import { actions } from '../../contacts';
 
 const commit = vi.fn();
@@ -9,9 +10,49 @@ vi.mock('widget/helpers/axios');
 vi.mock('widget/helpers/utils', () => ({
   sendMessage: vi.fn(),
 }));
+vi.mock('widget/helpers/actionCable', () => ({
+  default: { refreshConnector: vi.fn() },
+}));
 
 describe('#actions', () => {
+  let initialAuthToken;
+  let initialPubsubToken;
+
+  beforeEach(() => {
+    initialAuthToken = window.authToken;
+    initialPubsubToken = window.chatwootPubsubToken;
+  });
+
+  afterEach(() => {
+    if (initialAuthToken === undefined) delete window.authToken;
+    else window.authToken = initialAuthToken;
+    if (initialPubsubToken === undefined) delete window.chatwootPubsubToken;
+    else window.chatwootPubsubToken = initialPubsubToken;
+  });
+
   describe('#setUser', () => {
+    // EVIRMA: A signed identity replaces both guest credentials before fetching history.
+    it('installs the rotated HTTP and websocket tokens', async () => {
+      vi.spyOn(API, 'patch').mockResolvedValue({
+        data: { widget_auth_token: 'new-jwt', pubsub_token: 'new-pubsub' },
+      });
+
+      await actions.setUser(
+        { commit, dispatch },
+        { identifier: 'customer', user: { identifier_hash: 'signature' } }
+      );
+
+      expect(window.authToken).toBe('new-jwt');
+      expect(setHeader).toHaveBeenCalledWith('new-jwt');
+      expect(sendMessage).toHaveBeenCalledWith({
+        event: 'setAuthCookie',
+        data: { widgetAuthToken: 'new-jwt' },
+      });
+      expect(ActionCableConnector.refreshConnector).toHaveBeenCalledWith(
+        'new-pubsub'
+      );
+    });
+
     it('sends correct actions if contact object is refreshed ', async () => {
       const user = {
         email: 'thoma@sphadikam.com',
@@ -47,6 +88,7 @@ describe('#actions', () => {
       vi.spyOn(API, 'patch').mockResolvedValue({ data: { id: 1 } });
       await actions.setUser({ commit, dispatch }, { identifier: 1, user });
       expect(sendMessage.mock.calls).toEqual([]);
+      expect(ActionCableConnector.refreshConnector).not.toHaveBeenCalled();
       expect(commit.mock.calls).toEqual([]);
       expect(dispatch.mock.calls).toEqual([
         // EVIRMA: History refresh also follows identification with an existing token.
@@ -68,6 +110,7 @@ describe('#actions', () => {
       API.patch.mockResolvedValue({ data: { id: 1 } });
       await actions.setUser({ commit, dispatch }, { identifier: 1, user });
       expect(sendMessage.mock.calls).toEqual([]);
+      expect(ActionCableConnector.refreshConnector).not.toHaveBeenCalled();
       expect(commit.mock.calls).toEqual([]);
       // EVIRMA: An unchanged contact token can still gain an identifier and history access.
       expect(dispatch.mock.calls).toEqual([
@@ -75,6 +118,23 @@ describe('#actions', () => {
         ['contactHistory/fetch', null, { root: true }],
         ['get'],
       ]);
+    });
+
+    it('keeps both credentials after a failed identification', async () => {
+      window.authToken = 'guest-jwt';
+      window.chatwootPubsubToken = 'guest-pubsub';
+      API.patch.mockRejectedValueOnce({
+        response: { data: { error: 'invalid' } },
+      });
+
+      await actions.setUser(
+        { commit, dispatch },
+        { identifier: 'customer', user: { identifier_hash: 'signature' } }
+      );
+
+      expect(window.authToken).toBe('guest-jwt');
+      expect(window.chatwootPubsubToken).toBe('guest-pubsub');
+      expect(ActionCableConnector.refreshConnector).not.toHaveBeenCalled();
     });
   });
 

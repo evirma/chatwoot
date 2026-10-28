@@ -84,6 +84,8 @@ RSpec.describe Widget::BootstrapContactService do
 
     it 'verifies the migrated inbox only after it belongs to the signed identifier' do
       contact_inbox
+      old_source_id = contact_inbox.source_id
+      old_pubsub_token = contact_inbox.pubsub_token
 
       verified_inbox = service.perform
 
@@ -91,6 +93,45 @@ RSpec.describe Widget::BootstrapContactService do
       expect(verified_inbox.id).to eq(contact_inbox.id)
       expect(verified_inbox.contact.identifier).to eq(identifier)
       expect(contact_inbox.reload).to have_attributes(contact_id: identified_contact.id, hmac_verified: true)
+      expect(contact_inbox.source_id).not_to eq(old_source_id)
+      expect(contact_inbox.pubsub_token).not_to eq(old_pubsub_token)
+    end
+
+    # EVIRMA: A verified flag on a legacy anonymous link does not preserve guest credentials.
+    it 'rotates both credentials on a migrated verified guest without an identifier' do
+      contact_inbox.update!(hmac_verified: true)
+      old_source_id = contact_inbox.source_id
+      old_pubsub_token = contact_inbox.pubsub_token
+
+      service.perform
+
+      expect(contact_inbox.reload.source_id).not_to eq(old_source_id)
+      expect(contact_inbox.pubsub_token).not_to eq(old_pubsub_token)
+    end
+
+    it 'keeps both credentials for an already verified link with the same identifier' do
+      contact_inbox.update!(contact: identified_contact, hmac_verified: true)
+      old_source_id = contact_inbox.source_id
+      old_pubsub_token = contact_inbox.pubsub_token
+
+      service.perform
+
+      expect(contact_inbox.reload).to have_attributes(source_id: old_source_id, pubsub_token: old_pubsub_token,
+                                                      contact_id: identified_contact.id, hmac_verified: true)
+    end
+
+    # EVIRMA: The database link owner takes precedence over a stale in-memory association.
+    it 'does not merge a cached guest after its inbox was reassigned to another identifier' do
+      other_contact = create(:contact, account: account, identifier: 'another-user')
+      expect(contact_inbox.contact.id).to eq(guest.id)
+      service
+      ContactInbox.find(contact_inbox.id).update!(contact: other_contact)
+
+      verified_inbox = service.perform
+
+      expect(verified_inbox.contact_id).to eq(identified_contact.id)
+      expect(guest.reload.identifier).to be_nil
+      expect(contact_inbox.reload).to have_attributes(contact_id: other_contact.id, hmac_verified: false)
     end
 
     it 'returns a verified user inbox when the cached guest and its inbox have been deleted' do

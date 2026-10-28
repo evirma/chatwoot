@@ -2,6 +2,7 @@ import { sendMessage } from 'widget/helpers/utils';
 import ContactsAPI from '../../api/contacts';
 import { SET_USER_ERROR } from '../../constants/errorTypes';
 import { setHeader } from '../../helpers/axios';
+import ActionCableConnector from '../../helpers/actionCable';
 const state = {
   currentUser: {},
 };
@@ -11,6 +12,8 @@ const parseErrorData = error =>
   error && error.response && error.response.data ? error.response.data : error;
 export const updateWidgetAuthToken = widgetAuthToken => {
   if (widgetAuthToken) {
+    // EVIRMA: Config bootstrap and setUser must agree on the active HTTP credential.
+    window.authToken = widgetAuthToken;
     setHeader(widgetAuthToken);
     sendMessage({
       event: 'setAuthCookie',
@@ -73,9 +76,11 @@ export const actions = {
         custom_attributes,
       };
       const {
-        data: { widget_auth_token: widgetAuthToken },
+        data: { widget_auth_token: widgetAuthToken, pubsub_token: pubsubToken },
       } = await ContactsAPI.setUser(identifier, user);
       updateWidgetAuthToken(widgetAuthToken);
+      // EVIRMA: Re-subscribe before requests can load the identified history.
+      if (pubsubToken) ActionCableConnector.refreshConnector(pubsubToken);
       // EVIRMA: Clear the previous identity and invalidate pending history requests before reloading.
       dispatch('contactHistory/reset', null, { root: true });
       dispatch('contactHistory/fetch', null, { root: true });

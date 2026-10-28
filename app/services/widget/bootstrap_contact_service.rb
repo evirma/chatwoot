@@ -25,9 +25,12 @@ class Widget::BootstrapContactService
 
   private
 
-  # EVIRMA: Lock before finding the user so two tabs sharing a guest serialize their bootstrap.
+  # EVIRMA: Lock the link first, matching setUser's lock order and rejecting stale cached ownership.
   def locked_guest_contact
     return unless contact_inbox
+
+    @contact_inbox = web_widget.inbox.contact_inboxes.lock.find_by(id: contact_inbox.id)
+    return unless @contact_inbox
 
     web_widget.account.contacts.lock.find_by(id: contact_inbox.contact_id)
   end
@@ -58,12 +61,20 @@ class Widget::BootstrapContactService
 
   # EVIRMA: A fresh locked read rejects a guest identified by another tab or already removed.
   def migrate_guest_inbox(contact, guest)
-    return unless guest && (guest.identifier.blank? || guest.identifier == user.fetch(:identifier))
+    return unless migratable_guest?(guest)
 
     ContactMergeAction.new(account: web_widget.account, base_contact: contact, mergee_contact: guest).perform if guest.id != contact.id
 
-    # EVIRMA: Only verify an inbox now owned by the signed user, never an unidentified guest.
-    contact.contact_inboxes.find_by(id: contact_inbox.id)&.update!(hmac_verified: true)
+    # EVIRMA: Revoke both guest credentials only after the migrated link belongs to the signed user.
+    migrated_inbox = contact.contact_inboxes.find_by(id: contact_inbox.id)
+    return unless migrated_inbox
+    return if migrated_inbox.hmac_verified? && guest.identifier == user.fetch(:identifier)
+
+    migrated_inbox.update!(source_id: SecureRandom.uuid, pubsub_token: ContactInbox.generate_unique_secure_token, hmac_verified: true)
+  end
+
+  def migratable_guest?(guest)
+    guest && (guest.identifier.blank? || guest.identifier == user.fetch(:identifier))
   end
 
   # EVIRMA: Optional unsigned setUser behavior must never reuse or upgrade another verified session.
