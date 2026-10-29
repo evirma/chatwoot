@@ -252,7 +252,11 @@ export const IFrameHelper = {
       IFrameHelper.toggleCloseButton();
 
       if (window.$chatwoot.user) {
-        IFrameHelper.sendMessage('set-user', window.$chatwoot.user);
+        // EVIRMA: Replay pre-load identity using the same payload as SDK setUser.
+        IFrameHelper.sendMessage('set-user', {
+          identifier: window.$chatwoot.identifier,
+          user: window.$chatwoot.user,
+        });
       }
 
       window.playAudioAlert = () => {};
@@ -261,7 +265,11 @@ export const IFrameHelper = {
         document.addEventListener(e, IFrameHelper.setupAudioListeners, false);
       });
 
-      if (!window.$chatwoot.resetTriggered) {
+      // EVIRMA: External-token hosts need ready after reset; cookie-backed hosts keep upstream behavior.
+      if (
+        !window.$chatwoot.resetTriggered ||
+        window.$chatwoot.useExternalConversationToken
+      ) {
         dispatchWindowEvent({ eventName: CHATWOOT_READY });
       }
     },

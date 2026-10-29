@@ -262,3 +262,25 @@ JS/Vue-файлов — без замечаний. Временный брауз
 HTTP-сервер запрещён песочницей (`listen EPERM`), поэтому стенд собран отдельно
 во временную папку и открыт как локальный файл. Проверка живого расширения на WB
 и публикация собранного SDK не выполнялись.
+
+## SDK: выход и повторный вход без перезагрузки страницы
+
+| Файл | Место и назначение правки | Контракт / поведение | Риск при обновлении upstream | Проверка |
+| --- | --- | --- | --- | --- |
+| `app/javascript/entrypoints/sdk.js` | EVIRMA: reset очищает сохранённые user и identifier вместе с bootstrapUser и conversationToken. | Перезагрузка рамки не восстанавливает прежнего пользователя. Во внешнем режиме reset и setUser по-прежнему не читают, не пишут и не удаляют cookies. | Низкий: сохранить очистку до построения URL рамки. | `entrypoints/sdk.spec.js`: setUser → reset, очистка всех четырёх полей; отсутствие операций с cookies при токене null и строковом токене, включая вход после reset. |
+| `app/javascript/sdk/IFrameHelper.js` | EVIRMA: loaded повторно публикует chatwoot:ready после reset только при внешнем токене. | Наличие conversationToken в настройках, включая null, позволяет расширению дождаться гостевой рамки и вызвать setUser. В обычном режиме повторный ready остаётся подавлен. hasLoaded не меняется: внутренних читателей флага нет. | Низкий: сохранить условие внешнего режима, чтобы штатные обработчики ready не выполняли повторный вход после выхода. | `sdk/specs/IFrameHelper.spec.js`: настоящий reset не вызывает повторный set-user; ready в обоих режимах; вход из ready передаёт `{identifier, user}` и сохраняет гостевой токен. |
+
+EVIRMA: loaded повторно отправляет `{ identifier, user }`, если setUser вызван до первого loaded или после reset до ready; оба сценария покрыты регрессионным тестом.
+EVIRMA: правки тестов находятся только в `app/javascript/entrypoints/sdk.spec.js`
+и `app/javascript/sdk/specs/IFrameHelper.spec.js`; новых зависимостей нет.
+Проверка: `pnpm test app/javascript/entrypoints/sdk.spec.js app/javascript/sdk`.
+При отсутствии pnpm: `TZ=UTC node_modules/.bin/vitest run --no-coverage app/javascript/entrypoints/sdk.spec.js app/javascript/sdk`.
+ESLint запускается по четырём изменённым JS-файлам.
+
+EVIRMA: для доставки исправления нужна пересборка `pnpm build:sdk` и публикация SDK.
+Сборка, публикация и проверка расширения на WB в эту правку не входят.
+`enterprise/` и Git не меняются.
+
+EVIRMA: локально pnpm отсутствует в PATH; прямой запуск Vitest прошёл:
+4 файла / 97 тестов. До исправления новые регрессии воспроизводили дефекты.
+ESLint по четырём изменённым JS-файлам прошёл после форматирования теста.
