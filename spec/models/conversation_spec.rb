@@ -698,7 +698,8 @@ RSpec.describe Conversation do
         last_activity_at: conversation.last_activity_at.to_i,
         inbox_id: conversation.inbox_id,
         status: conversation.status,
-        contact_inbox: conversation.contact_inbox,
+        # EVIRMA: The push payload keeps link metadata without the private subscription token.
+        contact_inbox: conversation.contact_inbox.as_json(except: :pubsub_token),
         timestamp: conversation.last_activity_at.to_i,
         can_reply: true,
         channel: 'Channel::WebWidget',

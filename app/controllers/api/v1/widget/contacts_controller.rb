@@ -11,19 +11,19 @@ class Api::V1::Widget::ContactsController < Api::V1::Widget::BaseController
   end
 
   def set_user
-    contact = nil
+    # EVIRMA: Lock the cached owner before the link, then reject stale JWTs or changed ownership.
+    @contact.with_lock(requires_new: true) do
+      @contact_inbox.lock!
+      raise ActiveRecord::RecordNotFound unless @contact_inbox.source_id == auth_token_params[:source_id] &&
+                                                @contact_inbox.contact_id == @contact.id
 
-    if a_different_contact?
-      @contact_inbox, @widget_auth_token = build_contact_inbox_with_token(@web_widget)
-      contact = @contact_inbox.contact
-    else
-      contact = @contact
+      verified_same_identifier = @contact_inbox.hmac_verified? && @contact.identifier == permitted_params[:identifier]
+      widget_auth_token = nil
+      @contact_inbox, widget_auth_token = build_contact_inbox_with_token(@web_widget) if a_different_contact?
+
+      identify_contact(@contact_inbox.contact)
+      @widget_auth_token = verify_and_rotate_contact_inbox(widget_auth_token, verified_same_identifier)
     end
-
-    identify_contact(contact)
-
-    # EVIRMA: A failed identification must never persist a verified guest session.
-    @contact_inbox.update(hmac_verified: true) if should_verify_hmac?
   end
 
   # TODO : clean up this with proper routes delete contacts/custom_attributes
@@ -34,6 +34,26 @@ class Api::V1::Widget::ContactsController < Api::V1::Widget::BaseController
   end
 
   private
+
+  # EVIRMA: Verify the final link owner before issuing either credential after a merge.
+  def verify_and_rotate_contact_inbox(widget_auth_token, verified_same_identifier)
+    return widget_auth_token unless should_verify_hmac?
+
+    @contact_inbox.reload
+    if @contact_inbox.contact.identifier != permitted_params[:identifier]
+      render json: { error: 'HMAC failed: Invalid Identifier Hash Provided' }, status: :unauthorized
+      raise ActiveRecord::Rollback
+    end
+
+    unless verified_same_identifier || widget_auth_token.present?
+      @contact_inbox.source_id = SecureRandom.uuid
+      @contact_inbox.pubsub_token = ContactInbox.generate_unique_secure_token
+      payload = { source_id: @contact_inbox.source_id, inbox_id: @web_widget.inbox.id }
+      widget_auth_token = ::Widget::TokenService.new(payload: payload).generate_token
+    end
+    @contact_inbox.update!(hmac_verified: true)
+    widget_auth_token
+  end
 
   def identify_contact(contact)
     contact_identify_action = ContactIdentifyAction.new(

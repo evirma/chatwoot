@@ -4,11 +4,23 @@ import ActionCableConnector from '../actionCable';
 import { IFrameHelper } from '../utils';
 import { emitter } from 'shared/helpers/mitt';
 
+const { createSubscription, consumer } = vi.hoisted(() => {
+  const createSubscriptionMock = vi.fn((identifier, callbacks) => ({
+    ...callbacks,
+    identifier: JSON.stringify(identifier),
+    unsubscribe: vi.fn(),
+  }));
+  return {
+    createSubscription: createSubscriptionMock,
+    consumer: {
+      subscriptions: { create: createSubscriptionMock },
+      disconnect: vi.fn(),
+    },
+  };
+});
+
 vi.mock('@rails/actioncable', () => ({
-  createConsumer: () => ({
-    subscriptions: { create: () => ({}) },
-    disconnect: vi.fn(),
-  }),
+  createConsumer: () => consumer,
 }));
 
 describe('Widget ActionCableConnector', () => {
@@ -34,6 +46,8 @@ describe('Widget ActionCableConnector', () => {
       },
     };
     connector = new ActionCableConnector(app, 'test-token');
+    window.actionCable = connector;
+    window.chatwootPubsubToken = 'test-token';
     mockDispatch.mockClear();
     window.chatwootWebChannel = { inboxId: 1 };
   });
@@ -43,7 +57,48 @@ describe('Widget ActionCableConnector', () => {
     vi.restoreAllMocks();
     emitter.all.clear();
     delete window.chatwootWebChannel;
+    delete window.actionCable;
+    delete window.chatwootPubsubToken;
     vi.useRealTimers();
+  });
+
+  // EVIRMA: The rotated token must replace the live subscription without losing callbacks.
+  it('re-subscribes on the existing consumer and receives messages with the new token', async () => {
+    const originalSubscription = connector.subscription;
+    const originalIdentifier = JSON.parse(originalSubscription.identifier);
+    const message = {
+      id: 42,
+      inbox_id: 1,
+      conversation_id: 10,
+      sender_type: 'Contact',
+    };
+
+    ActionCableConnector.refreshConnector('new-pubsub');
+
+    expect(originalSubscription.unsubscribe).toHaveBeenCalledOnce();
+    expect(connector.consumer).toBe(consumer);
+    expect(createSubscription).toHaveBeenLastCalledWith(
+      { ...originalIdentifier, pubsub_token: 'new-pubsub' },
+      {
+        updatePresence: originalSubscription.updatePresence,
+        received: originalSubscription.received,
+        disconnected: originalSubscription.disconnected,
+      }
+    );
+    expect(window.chatwootPubsubToken).toBe('new-pubsub');
+    connector.subscription.received({
+      event: 'message.created',
+      data: message,
+    });
+    await Promise.resolve();
+    expect(mockDispatch).toHaveBeenCalledWith(
+      'conversation/addOrUpdateMessage',
+      message
+    );
+
+    ActionCableConnector.refreshConnector('new-pubsub');
+    expect(createSubscription).toHaveBeenCalledTimes(2);
+    expect(originalSubscription.unsubscribe).toHaveBeenCalledOnce();
   });
 
   // EVIRMA: Cross-channel changes update history without creating a notification.

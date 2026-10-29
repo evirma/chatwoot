@@ -25,11 +25,15 @@ class Widget::BootstrapContactService
 
   private
 
-  # EVIRMA: Lock before finding the user so two tabs sharing a guest serialize their bootstrap.
+  # EVIRMA: Lock the cached owner before the link and reject ownership changed while waiting.
   def locked_guest_contact
     return unless contact_inbox
 
-    web_widget.account.contacts.lock.find_by(id: contact_inbox.contact_id)
+    guest = web_widget.account.contacts.lock.find_by(id: contact_inbox.contact_id)
+    return unless guest
+
+    @contact_inbox = web_widget.inbox.contact_inboxes.lock.find_by(id: contact_inbox.id)
+    guest if @contact_inbox&.contact_id == guest.id
   end
 
   def find_or_create_contact
@@ -58,12 +62,20 @@ class Widget::BootstrapContactService
 
   # EVIRMA: A fresh locked read rejects a guest identified by another tab or already removed.
   def migrate_guest_inbox(contact, guest)
-    return unless guest && (guest.identifier.blank? || guest.identifier == user.fetch(:identifier))
+    return unless migratable_guest?(guest)
 
     ContactMergeAction.new(account: web_widget.account, base_contact: contact, mergee_contact: guest).perform if guest.id != contact.id
 
-    # EVIRMA: Only verify an inbox now owned by the signed user, never an unidentified guest.
-    contact.contact_inboxes.find_by(id: contact_inbox.id)&.update!(hmac_verified: true)
+    # EVIRMA: Revoke both guest credentials only after the migrated link belongs to the signed user.
+    migrated_inbox = contact.contact_inboxes.find_by(id: contact_inbox.id)
+    return unless migrated_inbox
+    return if migrated_inbox.hmac_verified? && guest.identifier == user.fetch(:identifier)
+
+    migrated_inbox.update!(source_id: SecureRandom.uuid, pubsub_token: ContactInbox.generate_unique_secure_token, hmac_verified: true)
+  end
+
+  def migratable_guest?(guest)
+    guest && (guest.identifier.blank? || guest.identifier == user.fetch(:identifier))
   end
 
   # EVIRMA: Optional unsigned setUser behavior must never reuse or upgrade another verified session.
@@ -73,7 +85,16 @@ class Widget::BootstrapContactService
        (contact_inbox.contact.identifier.present? && contact_inbox.contact.identifier != user[:identifier])
       @contact_inbox = web_widget.create_contact_inbox(additional_attributes)
     end
+    # EVIRMA: An unsigned request cannot return credentials rotated by a signed request after token resolution.
+    source_id = contact_inbox.source_id
     ContactIdentifyAction.new(contact: contact_inbox.contact, params: user, discard_invalid_attrs: true).perform
+    contact_inbox_or_new_guest(source_id)
+  end
+
+  def contact_inbox_or_new_guest(source_id)
     contact_inbox.reload
+    return web_widget.create_contact_inbox(additional_attributes) if contact_inbox.source_id != source_id
+
+    contact_inbox
   end
 end

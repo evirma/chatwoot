@@ -194,6 +194,134 @@ RSpec.describe '/api/v1/widget/contacts', type: :request do
     let(:correct_identifier_hash) { OpenSSL::HMAC.hexdigest('sha256', web_widget.hmac_token, params[:identifier].to_s) }
     let(:incorrect_identifier_hash) { 'test' }
 
+    # EVIRMA: A guest credential must not gain access to the identified contact's conversations.
+    context 'when identifying a guest with a verified contact' do
+      let!(:guest_conversation) do
+        create(:conversation, account: account, inbox: web_widget.inbox, contact: contact, contact_inbox: contact_inbox)
+      end
+      let(:identified_contact) { create(:contact, account: account, identifier: params[:identifier]) }
+      let!(:identified_conversation) do
+        verified_inbox = create(:contact_inbox, contact: identified_contact, inbox: web_widget.inbox, hmac_verified: true)
+        create(:conversation, account: account, inbox: web_widget.inbox, contact: identified_contact, contact_inbox: verified_inbox)
+      end
+
+      def fetch_widget_conversation(auth_token)
+        get '/api/v1/widget/conversations', params: { website_token: web_widget.website_token },
+                                            headers: { 'X-Auth-Token' => auth_token }, as: :json
+      end
+
+      def sign_in_guest
+        patch '/api/v1/widget/contact/set_user',
+              params: params.merge(identifier_hash: correct_identifier_hash),
+              headers: { 'X-Auth-Token' => token }, as: :json
+        response.parsed_body['widget_auth_token']
+      end
+
+      it 'revokes the guest token after HMAC verification' do
+        fetch_widget_conversation(token)
+        expect(response.parsed_body['id']).to eq(guest_conversation.display_id)
+        old_source_id = contact_inbox.source_id
+        old_pubsub_token = contact_inbox.pubsub_token
+
+        new_token = sign_in_guest
+        expect(new_token).to be_present
+        expect(response.parsed_body['pubsub_token']).to eq(contact_inbox.reload.pubsub_token)
+
+        fetch_widget_conversation(token)
+        expect(response).to have_http_status(:not_found)
+        expect(contact_inbox.source_id).not_to eq(old_source_id)
+        expect(contact_inbox.pubsub_token).not_to eq(old_pubsub_token)
+        expect(ContactInbox.exists?(pubsub_token: old_pubsub_token)).to be(false)
+      end
+
+      it 'opens the identified contact conversations with the new token' do
+        fetch_widget_conversation(sign_in_guest)
+
+        expect(response).to have_http_status(:success)
+        expect(response.parsed_body['id']).to eq(identified_conversation.display_id)
+        expect(contact_inbox.reload).to be_hmac_verified
+        expect(contact_inbox.contact_id).to eq(identified_contact.id)
+        expect(guest_conversation.reload.contact_inbox_id).to eq(contact_inbox.id)
+      end
+    end
+
+    # EVIRMA: Repeated signed setUser calls must preserve the existing verified session.
+    it 'keeps the token and source id for an already verified contact with the same identifier' do
+      contact.update!(identifier: params[:identifier])
+      contact_inbox.update!(hmac_verified: true)
+      old_source_id = contact_inbox.source_id
+      old_pubsub_token = contact_inbox.pubsub_token
+
+      patch '/api/v1/widget/contact/set_user',
+            params: params.merge(identifier_hash: correct_identifier_hash),
+            headers: { 'X-Auth-Token' => token }, as: :json
+
+      expect(response).to have_http_status(:success)
+      expect(response.parsed_body).not_to have_key('widget_auth_token')
+      expect(response.parsed_body).not_to have_key('pubsub_token')
+      expect(contact_inbox.reload.source_id).to eq(old_source_id)
+      expect(contact_inbox.pubsub_token).to eq(old_pubsub_token)
+    end
+
+    # EVIRMA: A legacy verified flag without an identified owner does not preserve guest credentials.
+    it 'rotates both credentials for a verified guest without an identifier' do
+      contact_inbox.update!(hmac_verified: true)
+      old_source_id = contact_inbox.source_id
+      old_pubsub_token = contact_inbox.pubsub_token
+
+      patch '/api/v1/widget/contact/set_user', params: params.merge(identifier_hash: correct_identifier_hash),
+                                               headers: { 'X-Auth-Token' => token }, as: :json
+
+      expect(response).to have_http_status(:success)
+      expect(response.parsed_body['widget_auth_token']).to be_present
+      expect(response.parsed_body['pubsub_token']).to eq(contact_inbox.reload.pubsub_token)
+      expect(contact_inbox.source_id).not_to eq(old_source_id)
+      expect(contact_inbox.pubsub_token).not_to eq(old_pubsub_token)
+    end
+
+    # EVIRMA: A merge race cannot return credentials for a link reassigned after identification.
+    it 'rolls back when the final link belongs to a different identifier' do
+      other_contact = create(:contact, account: account, identifier: 'another-user')
+      old_source_id = contact_inbox.source_id
+      old_pubsub_token = contact_inbox.pubsub_token
+      allow(ContactIdentifyAction).to receive(:new).and_wrap_original do |original, *args, **kwargs|
+        action = original.call(*args, **kwargs)
+        allow(action).to receive(:perform).and_wrap_original do |perform|
+          result = perform.call
+          ContactInbox.find(contact_inbox.id).update!(contact: other_contact)
+          result
+        end
+        action
+      end
+
+      patch '/api/v1/widget/contact/set_user', params: params.merge(identifier_hash: correct_identifier_hash),
+                                               headers: { 'X-Auth-Token' => token }, as: :json
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).not_to include('widget_auth_token', 'pubsub_token', 'hmac_verified')
+      expect(contact_inbox.reload).to have_attributes(source_id: old_source_id, pubsub_token: old_pubsub_token,
+                                                      hmac_verified: false, contact_id: contact.id)
+      expect(contact.reload.identifier).to be_nil
+    end
+
+    # EVIRMA: Optional unsigned identification retains its existing guest credentials.
+    context 'without mandatory HMAC' do
+      let(:web_widget) { create(:channel_widget, account: account, hmac_mandatory: false) }
+
+      it 'keeps the token and source id when no identifier hash is supplied' do
+        old_source_id = contact_inbox.source_id
+
+        patch '/api/v1/widget/contact/set_user', params: params,
+                                                 headers: { 'X-Auth-Token' => token }, as: :json
+
+        expect(response).to have_http_status(:success)
+        expect(response.parsed_body).not_to have_key('widget_auth_token')
+        expect(response.parsed_body).not_to have_key('pubsub_token')
+        expect(contact_inbox.reload.source_id).to eq(old_source_id)
+        expect(contact_inbox).not_to be_hmac_verified
+      end
+    end
+
     # EVIRMA: Failed signed identification must not leave a verified guest session behind.
     it 'does not verify the contact inbox when identification returns 422' do
       patch '/api/v1/widget/contact/set_user',
@@ -220,18 +348,12 @@ RSpec.describe '/api/v1/widget/contacts', type: :request do
         body = response.parsed_body
         expect(body['id']).not_to eq(contact.id)
         expect(body['widget_auth_token']).not_to be_nil
+        expect(body['pubsub_token']).to eq(Contact.find(body['id']).contact_inboxes.first.pubsub_token)
         expect(Contact.find(body['id']).contact_inboxes.first.hmac_verified?).to be(true)
       end
     end
 
     context 'with mandatory hmac' do
-      let(:identify_action) { double }
-
-      before do
-        allow(ContactIdentifyAction).to receive(:new).and_return(identify_action)
-        allow(identify_action).to receive(:perform).and_return(contact)
-      end
-
       it 'returns success when correct identifier hash is provided' do
         patch '/api/v1/widget/contact/set_user',
               params: params.merge(identifier_hash: correct_identifier_hash),

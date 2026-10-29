@@ -20,6 +20,25 @@ const isMessageInActiveConversation = (getters, message) => {
 const WIDGET_PRESENCE_INTERVAL = 60000;
 
 class ActionCableConnector extends BaseActionCableConnector {
+  // EVIRMA: Keep the live consumer and its presence timer while replacing a revoked subscription.
+  static refreshConnector(pubsubToken) {
+    const connector = window.actionCable;
+    if (window.chatwootPubsubToken === pubsubToken) return;
+
+    const oldSubscription = connector.subscription;
+    const identifier = JSON.parse(oldSubscription.identifier);
+    oldSubscription.unsubscribe();
+    connector.subscription = connector.consumer.subscriptions.create(
+      { ...identifier, pubsub_token: pubsubToken },
+      {
+        updatePresence: oldSubscription.updatePresence,
+        received: oldSubscription.received,
+        disconnected: oldSubscription.disconnected,
+      }
+    );
+    window.chatwootPubsubToken = pubsubToken;
+  }
+
   constructor(app, pubsubToken) {
     super(app, pubsubToken, '', WIDGET_PRESENCE_INTERVAL);
     this.events = {

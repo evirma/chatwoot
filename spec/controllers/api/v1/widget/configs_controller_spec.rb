@@ -62,19 +62,21 @@ RSpec.describe '/api/v1/widget/config', type: :request do
         identified_contact = create(:contact, account: account, identifier: identifier, email: user[:email])
         verified_link = create(:contact_inbox, contact: identified_contact, inbox: web_widget.inbox, hmac_verified: true)
         guest_conversation = create(:conversation, account: account, inbox: web_widget.inbox, contact: contact, contact_inbox: contact_inbox)
+        old_pubsub_token = contact_inbox.pubsub_token
 
         expect do
           post '/api/v1/widget/config', params: params, headers: { 'X-Auth-Token' => token }, as: :json
         end.to change(Contact, :count).by(-1)
 
         body = response.parsed_body
-        expect(body['contact']['id']).to eq(identified_contact.id)
-        expect(body['contact']['pubsub_token']).to eq(verified_link.pubsub_token)
+        expect(body['contact']).to include('id' => identified_contact.id, 'pubsub_token' => verified_link.pubsub_token)
         expect(guest_conversation.reload.contact_id).to eq(identified_contact.id)
-        expect(contact_inbox.reload).to be_hmac_verified
+        expect(ContactInbox.exists?(pubsub_token: old_pubsub_token)).to be(false)
+        get '/api/v1/widget/conversations', params: { website_token: web_widget.website_token },
+                                            headers: { 'X-Auth-Token' => token }
+        expect(response).to have_http_status(:not_found)
         get '/api/v1/widget/conversations', params: { website_token: web_widget.website_token },
                                             headers: { 'X-Auth-Token' => body['website_channel_config']['auth_token'] }
-        expect(response).to have_http_status(:success)
         expect(response.parsed_body['id']).to eq(guest_conversation.display_id)
       end
 
@@ -114,17 +116,25 @@ RSpec.describe '/api/v1/widget/config', type: :request do
       it 'creates an identified contact and merges a guest that already has the same email' do
         contact.update!(email: user[:email])
         guest_conversation = create(:conversation, account: account, inbox: web_widget.inbox, contact: contact, contact_inbox: contact_inbox)
+        old_pubsub_token = contact_inbox.pubsub_token
 
         expect do
           post '/api/v1/widget/config', params: params, headers: { 'X-Auth-Token' => token }, as: :json
         end.not_to change(Contact, :count)
 
-        expect(response).to have_http_status(:success)
         identified_contact = account.contacts.find_by!(identifier: identifier)
         expect(identified_contact.email).to eq(user[:email])
-        expect(guest_conversation.reload.contact_id).to eq(identified_contact.id)
-        expect(contact_inbox.reload.contact_id).to eq(identified_contact.id)
-        expect(contact_inbox).to be_hmac_verified
+        expect(guest_conversation.reload).to have_attributes(contact_id: identified_contact.id, contact_inbox_id: contact_inbox.id)
+        final_pubsub_token = response.parsed_body['contact']['pubsub_token']
+        expect(contact_inbox.reload).to have_attributes(contact_id: identified_contact.id, hmac_verified: true, pubsub_token: final_pubsub_token)
+        expect(ContactInbox.exists?(pubsub_token: old_pubsub_token)).to be(false)
+        final_token = response.parsed_body['website_channel_config']['auth_token']
+        get '/api/v1/widget/conversations', params: { website_token: web_widget.website_token },
+                                            headers: { 'X-Auth-Token' => token }
+        expect(response).to have_http_status(:not_found)
+        get '/api/v1/widget/conversations', params: { website_token: web_widget.website_token },
+                                            headers: { 'X-Auth-Token' => final_token }
+        expect(response.parsed_body['id']).to eq(guest_conversation.display_id)
       end
 
       it 'ignores a token signed for another inbox even if its source id exists in this inbox' do
@@ -230,6 +240,37 @@ RSpec.describe '/api/v1/widget/config', type: :request do
 
       context 'without a signature' do
         let(:identifier_hash) { nil }
+
+        # EVIRMA: A signed tab can rotate the cached guest link before unsigned bootstrap reloads it.
+        it 'returns a new guest after a signed setUser rotates the cached link' do
+          original_source_id = contact_inbox.source_id
+          original_pubsub_token = contact_inbox.pubsub_token
+          signed_status = nil
+          allow(Widget::BootstrapContactService).to receive(:new).and_wrap_original do |original, **attributes|
+            service = original.call(**attributes)
+            signed_session = ActionDispatch::Integration::Session.new(Rails.application)
+            signed_hash = OpenSSL::HMAC.hexdigest('sha256', web_widget.hmac_token, identifier)
+            signed_session.patch '/api/v1/widget/contact/set_user',
+                                 params: user.merge(website_token: web_widget.website_token, identifier_hash: signed_hash),
+                                 headers: { 'X-Auth-Token' => token }, as: :json
+            signed_status = signed_session.response.status
+            service
+          end
+
+          post '/api/v1/widget/config', params: params, headers: { 'X-Auth-Token' => token }, as: :json
+
+          signed_link = ContactInbox.find(contact_inbox.id)
+          expect(signed_status).to eq(200)
+          expect(signed_link).to have_attributes(contact_id: contact.id, hmac_verified: true)
+          expect(signed_link.source_id).not_to eq(original_source_id)
+          expect(signed_link.pubsub_token).not_to eq(original_pubsub_token)
+          expect(response).to have_http_status(:success)
+          body = response.parsed_body
+          decoded = Widget::TokenService.new(token: body['website_channel_config']['auth_token']).decode_token
+          guest_link = ContactInbox.find_by!(inbox_id: web_widget.inbox.id, source_id: decoded[:source_id])
+          expect(guest_link).not_to be_hmac_verified
+          expect(body['contact']).to include('id' => guest_link.contact_id, 'identifier' => nil, 'pubsub_token' => guest_link.pubsub_token)
+        end
 
         it 'rejects an unsigned user when HMAC is mandatory' do
           web_widget.update!(hmac_mandatory: true)
