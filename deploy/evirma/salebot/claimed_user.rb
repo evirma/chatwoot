@@ -11,31 +11,42 @@ class EvirmaSalebotClaimedUser
   UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
 
   def self.run(argv = ARGV, output: $stdout)
-    options = { apply: false }
+    options = { mappings: [], apply: false }
     args = argv.dup
     args.shift if args.first == '--'
     OptionParser.new do |cli|
-      cli.banner = 'rails runner deploy/evirma/salebot/claimed_user.rb -- --links FILE [--apply]'
-      cli.on('--links FILE') { |value| options[:links] = value }
+      cli.banner = 'rails runner deploy/evirma/salebot/claimed_user.rb -- --extra FILE --mapping FILE... --users FILE [--apply]'
+      cli.on('--extra FILE') { |value| options[:extra] = value }
+      cli.on('--mapping FILE') { |value| options[:mappings] << value }
+      cli.on('--users FILE') { |value| options[:users] = value }
       cli.on('--apply') { options[:apply] = true }
     end.parse!(args)
-    raise OptionParser::MissingArgument, '--links' unless options[:links]
+    raise OptionParser::MissingArgument, '--extra, --mapping, --users' unless complete?(options)
 
-    new(links: options[:links], apply: options[:apply], output: output).perform
+    new(**options, output: output).perform
   end
 
-  def initialize(links:, apply:, output:)
-    @links = links
+  def self.complete?(options)
+    options[:extra] && options[:mappings].any? && options[:users]
+  end
+
+  # extra: clients-extra.jsonl ({"id", "variables": {"evirma_user_id"}}); mappings: import mapping CSVs;
+  # users: Evirma user ids that exist in crm.user_auth, one per line (read from the prod database beforehand).
+  def initialize(extra:, mappings:, users:, apply:, output:)
+    @extra = extra
+    @mappings = mappings
+    @users = users
     @apply = apply
     @output = output
   end
 
-  # The links CSV has chatwoot_contact_id and evirma_user_id; rows are checked against Evirma users beforehand.
   def perform
     account = Account.find(ACCOUNT_ID)
+    users = File.readlines(@users, chomp: true).to_set { |line| line.strip.downcase }
     stats = Hash.new(0)
-    CSV.foreach(@links, headers: true) do |row|
-      stats[link(account, row['chatwoot_contact_id'].to_i, row['evirma_user_id'].to_s.downcase)] += 1
+    claims(stats).each do |client_id, user_id|
+      contact_id = contacts[client_id]
+      stats[contact_id ? link(account, contact_id, user_id, users) : 'skipped_not_imported'] += 1
     end
     @output.puts JSON.generate(mode: @apply ? 'apply' : 'dry-run', totals: stats)
     stats
@@ -43,8 +54,27 @@ class EvirmaSalebotClaimedUser
 
   private
 
-  def link(account, contact_id, user_id)
+  def claims(stats)
+    File.foreach(@extra).filter_map do |line|
+      record = JSON.parse(line)
+      variables = record['variables']
+      stats['extra_without_variables'] += 1 unless variables.is_a?(Hash)
+      user_id = variables.is_a?(Hash) ? variables['evirma_user_id'].to_s.strip.downcase : ''
+      [record['id'].to_s, user_id] unless user_id.empty?
+    end
+  end
+
+  def contacts
+    @contacts ||= @mappings.each_with_object({}) do |path, result|
+      CSV.foreach(path, headers: true) do |row|
+        result[row['salebot_client_id']] = row['contact_id'].to_i if row['status'] == 'imported' && row['contact_id'].present?
+      end
+    end
+  end
+
+  def link(account, contact_id, user_id, users)
     return 'skipped_bad_user_id' unless UUID.match?(user_id)
+    return 'skipped_unknown_user' unless users.include?(user_id)
 
     contact = account.contacts.find_by(id: contact_id)
     return 'skipped_missing_contact' unless contact

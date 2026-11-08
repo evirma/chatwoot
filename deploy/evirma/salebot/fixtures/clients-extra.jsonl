@@ -1,0 +1,5 @@
+{"id": 101, "state_id": 66793715, "variables": {"evirma_user_id": "0B8E1C2A-3F4D-4E5F-9A6B-7C8D9E0F1A2B"}}
+{"id": 102, "state_id": 66793719, "variables": {"evirma_user_id": "11111111-2222-4333-8444-555555555555"}}
+{"id": 103, "state_id": null, "variables": {"evirma_user_id": "not-a-uuid"}}
+{"id": 104, "state_id": null}
+{"id": 999, "state_id": null, "variables": {"evirma_user_id": "0b8e1c2a-3f4d-4e5f-9a6b-7c8d9e0f1a2b"}}

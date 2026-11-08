@@ -215,15 +215,20 @@ RSpec должен прогнать координатор в `evirma-chatwoot-r
 «Заявленный пользователь Evirma (не подтверждён)». `identifier` контакта и таблицы
 `support.*` скрипт не трогает.
 
-Порядок:
+Порядок записи на прод (каждый шаг — по команде владельца):
 
-1. Собрать пары «клиент SaleBot → evirma_user_id» из `clients-extra.jsonl` и соединить
-   их с файлами соответствий импорта (`mapping-*.csv`, колонки `salebot_client_id`,
-   `chatwoot_contact_id`).
-2. Оставить только `evirma_user_id`, которые есть в `crm.user_auth` прод-базы Evirma
-   (чтение через `bin/db/prod-psql`).
-3. Записать итог в `links.csv` с колонками `chatwoot_contact_id,evirma_user_id`.
+1. На прод-сервере в `/srv/docker/chatwoot/salebot-export` уже лежат `clients-extra.jsonl`,
+   `mapping-max-20261028.csv` и `mapping-tg-20261028.csv`. Новая выгрузка из SaleBot не нужна.
+2. Список существующих пользователей Evirma — чтение прод-базы:
+   `bin/db/prod-psql -At -c "SELECT id FROM crm.user_auth WHERE delete_date IS NULL" > users.txt`.
+   Положить файл рядом с выгрузкой.
+3. Скопировать файлы и скрипт в контейнер `chatwoot-rails-1`, как для `import.rb`.
 4. Сухой прогон без записи:
-   `bundle exec rails runner deploy/evirma/salebot/claimed_user.rb -- --links links.csv`.
-5. Запись после проверки итогов: та же команда с `--apply`. Повтор безопасен: уже
-   записанное значение даёт `already_set`, другое заявленное значение не перезаписывается.
+   `bundle exec rails runner deploy/evirma/salebot/claimed_user.rb -- --extra clients-extra.jsonl --mapping mapping-max-20261028.csv --mapping mapping-tg-20261028.csv --users users.txt`.
+   Итог — JSON с числом строк по исходам. `set` — сколько контактов получат атрибут.
+   `extra_without_variables` больше нуля значит, что в выгрузке нет поля `variables`:
+   остановиться и сверить формат.
+5. Запись после проверки итогов владельцем: та же команда с `--apply`. Повтор безопасен:
+   уже записанное значение даёт `already_set`, другое заявленное значение не перезаписывается.
+6. Проверка: в Chatwoot у перенесённого клиента с заявленным аккаунтом в панели видна
+   карточка с пометкой «не подтверждён» (после выкладки evirma#2284).
