@@ -55,6 +55,22 @@ RSpec.describe Channel::Telegram do
     end
   end
 
+  # EVIRMA: The relay returns 200 with ok: false for a rejected token.
+  describe 'bot token validation' do
+    it 'rejects a token Telegram refuses even when the relay answers 200' do
+      channel = described_class.new(bot_token: '2324234324', account: create(:account))
+
+      with_modified_env TELEGRAM_API_URL: nil do
+        stub_request(:get, "https://api.telegram.org/bot#{channel.bot_token}/getMe")
+          .to_return(status: 200, body: { ok: false, error_code: 404, description: 'Not Found' }.to_json,
+                     headers: { 'Content-Type' => 'application/json' })
+
+        expect(channel.save).to be false
+      end
+      expect(channel.errors[:bot_token]).to include('invalid token')
+    end
+  end
+
   describe 'webhook setup' do
     let(:telegram_channel) { described_class.new(bot_token: '2324234324', account: create(:account)) }
 
