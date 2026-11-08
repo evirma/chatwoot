@@ -96,7 +96,8 @@ class Channel::Telegram < ApplicationRecord
 
   def ensure_valid_bot_token
     response = HTTParty.get("#{telegram_api_url}/getMe")
-    unless response.success?
+    # EVIRMA: The Telegram relay answers 200 even when Telegram rejects the token, so trust only "ok" in the body.
+    unless response.success? && response.parsed_response.is_a?(Hash) && response.parsed_response['ok']
       errors.add(:bot_token, 'invalid token')
       return
     end
