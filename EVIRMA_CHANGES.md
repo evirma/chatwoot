@@ -311,3 +311,7 @@ EVIRMA: подписанный `setUser` и подписанный bootstrap о�
 ставит оба ключа до монтирования виджета. Новых зависимостей и изменений схемы
 данных нет.
 EVIRMA: обновления беседы не передают `pubsub_token`; неподписанный bootstrap отбрасывает связь после ротации, а подписанный вход и bootstrap блокируют контакт перед связью.
+
+## Перенос SaleBot: заявленный пользователь Evirma
+
+EVIRMA: `deploy/evirma/salebot/claimed_user.rb` пишет `evirma_user_id` из SaleBot в атрибут контакта `claimed_evirma_user_id`. Значение не проверено, поэтому `identifier` не меняется. Тест — `spec/evirma/evirma_salebot_claimed_user_spec.rb`.
