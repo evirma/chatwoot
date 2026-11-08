@@ -11,6 +11,7 @@ class ActionCableBroadcastJob < ApplicationJob
   ].freeze
 
   def perform(members, event_name, data)
+    members = current_members(members)
     return if members.blank?
 
     broadcast_data = prepare_broadcast_data(event_name, data)
@@ -18,6 +19,16 @@ class ActionCableBroadcastJob < ApplicationJob
   end
 
   private
+
+  # EVIRMA: A job queued before a widget login still holds the guest pubsub token; the login rotates it,
+  # so a token that no longer belongs to a user or contact inbox must not get the identified contact's events.
+  def current_members(members)
+    tokens = Array(members).reject { |member| member.to_s.start_with?('account_') }
+    return members if tokens.empty?
+
+    known = User.where(pubsub_token: tokens).pluck(:pubsub_token) + ContactInbox.where(pubsub_token: tokens).pluck(:pubsub_token)
+    Array(members).select { |member| member.to_s.start_with?('account_') || known.include?(member) }
+  end
 
   # Ensures that only the latest available data is sent to prevent UI issues
   # caused by out-of-order events during high-traffic periods. This prevents
