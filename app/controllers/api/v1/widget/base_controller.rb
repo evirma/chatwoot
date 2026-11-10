@@ -72,6 +72,13 @@ class Api::V1::Widget::BaseController < ApplicationController
     }
   end
 
+  def evirma_source_host
+    uri = URI.parse(permitted_params[:message][:referer_url].to_s)
+    uri.host&.downcase if uri.is_a?(URI::HTTP)
+  rescue URI::InvalidURIError
+    nil
+  end
+
   def timestamp_params
     { timestamp: permitted_params[:message][:timestamp] }
   end
@@ -82,9 +89,11 @@ class Api::V1::Widget::BaseController < ApplicationController
       sender: @contact,
       content: permitted_params[:message][:content],
       inbox_id: conversation.inbox_id,
+      # EVIRMA: Keep only the host of the page the message was sent from, so the dashboard can tell
+      # WB pages from evirma.ru within one web inbox. The path and query are not stored.
       content_attributes: {
         in_reply_to: permitted_params[:message][:reply_to]
-      },
+      }.merge(evirma_source_host ? { evirma_source_host: evirma_source_host } : {}),
       echo_id: permitted_params[:message][:echo_id],
       message_type: :incoming
     }

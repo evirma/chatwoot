@@ -319,3 +319,14 @@ EVIRMA: `Channel::Telegram#ensure_valid_bot_token` принимает токен
 ## SDK: CSS-переменные с префиксом
 
 EVIRMA: `app/javascript/sdk/sdk.css` объявляет на `:root` страницы-носителя переменные `--cw-b-100` и `--cw-s-700`. Короткие имена `--b-100` и `--s-700` могли совпасть с переменными самой страницы, например WB в расширении Evirma.
+
+## Панель оператора: источник входящего сообщения
+
+Под каждым входящим сообщением клиента рядом со временем видно, откуда оно пришло: «Сайт WB»
+(расширение на страницах WB, seller и cmp), «Сайт Evirma» (evirma.ru), «Telegram» или «MAX».
+Клиенты не менялись: виджет уже отправляет `referer_url` с каждым сообщением (`pageUrl` хоста).
+
+| Штатный файл | Суть | Риск конфликта | Проверка после слияния upstream |
+|---|---|---|---|
+| `app/controllers/api/v1/widget/base_controller.rb` | EVIRMA: `message_params` кладёт в `content_attributes` сообщения `evirma_source_host` — только хост из `referer_url`, в нижнем регистре, для `http(s)`. Путь и параметры адреса не хранятся; значение из тела запроса не принимается. | Низкий: одна строка в `message_params` и новый метод. | RSpec `spec/evirma/evirma_message_source_host_spec.rb`. |
+| `app/javascript/dashboard/components-next/message/MessageMeta.vue`, новый `dashboard/helper/evirmaMessageSource.js`, переводы `dashboard/.../{en,ru}/conversation.json` (ключ `EVIRMA_MESSAGE_SOURCE`) | EVIRMA: подпись с иконкой у входящих неприватных сообщений. Веб-ящик — по хосту (`*.wildberries.ru`, `*.wb.ru` → WB; `*evirma.ru` → сайт); у старых сообщений без хоста — по `custom_attributes.source = extension` беседы. Telegram — по каналу ящика. MAX — API-ящик, у которого путь `webhook_url` кончается на `/support/max/chatwoot-webhook`. | Низкий: блок в шаблоне рядом со временем. | Vitest: `helper/specs/evirmaMessageSource.spec.js`, `message/specs/MessageSource.spec.js`. |
