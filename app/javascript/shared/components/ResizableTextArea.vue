@@ -39,6 +39,11 @@ export default {
       type: Boolean,
       default: false,
     },
+    // EVIRMA: A hidden widget iframe must never take focus from the host page.
+    autoFocus: {
+      type: Boolean,
+      default: true,
+    },
   },
   emits: [
     'typingOn',
@@ -76,7 +81,7 @@ export default {
       // Suppose if someone manually set the cursor to the middle of the body
       // and starts typing, the cursor will be set to the end of the body
       // A surprise cursor jump? Definitely not user-friendly.
-      if (document.activeElement !== this.$refs.textarea) {
+      if (this.autoFocus && document.activeElement !== this.$refs.textarea) {
         this.$nextTick(() => {
           this.setCursor();
         });
@@ -92,8 +97,8 @@ export default {
     this.$nextTick(() => {
       if (this.modelValue) {
         this.resizeTextarea();
-        this.setCursor();
-      } else {
+        if (this.autoFocus) this.setCursor();
+      } else if (this.autoFocus) {
         this.focus();
       }
     });
