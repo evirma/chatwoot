@@ -1,4 +1,4 @@
-// EVIRMA: A pending bootstrap must prevent Vue mounting and ActionCable subscription.
+// EVIRMA: A pending bootstrap must prevent Vue mounting; startup itself never opens ActionCable.
 const { mount, connect, bootstrapWidget, app } = vi.hoisted(() => {
   const mountWidget = vi.fn(() => ({ mounted: true }));
   const widgetApp = { use: vi.fn(), directive: vi.fn(), mount: mountWidget };
@@ -36,7 +36,7 @@ describe('widget startup', () => {
     vi.clearAllMocks();
   });
 
-  it('mounts and subscribes only after bootstrap resolves with the final pubsub token', async () => {
+  it('mounts only after bootstrap resolves and leaves ActionCable to the opened widget', async () => {
     window.chatwootBootstrap = true;
     let resolveBootstrap;
     bootstrapWidget.mockReturnValue(
@@ -51,10 +51,7 @@ describe('widget startup', () => {
     resolveBootstrap();
     await startup;
     expect(mount).toHaveBeenCalledExactlyOnceWith('#app');
-    expect(connect).toHaveBeenCalledWith(
-      window.WOOT_WIDGET,
-      'identified-pubsub'
-    );
+    expect(connect).not.toHaveBeenCalled();
   });
 
   it('keeps legacy startup synchronous when bootstrap is disabled', () => {
@@ -62,7 +59,7 @@ describe('widget startup', () => {
     window.onload();
     expect(bootstrapWidget).not.toHaveBeenCalled();
     expect(mount).toHaveBeenCalledExactlyOnceWith('#app');
-    expect(connect).toHaveBeenCalledWith(window.WOOT_WIDGET, 'legacy-pubsub');
+    expect(connect).not.toHaveBeenCalled();
   });
 
   // EVIRMA: A failed bootstrap cannot subscribe using an absent or previous identity.

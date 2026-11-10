@@ -4,8 +4,7 @@ import { createI18n } from 'vue-i18n';
 import VueDOMPurifyHTML from 'vue-dompurify-html';
 import store from '../widget/store';
 import App from '../widget/App.vue';
-import ActionCableConnector from '../widget/helpers/actionCable';
-// EVIRMA: Signed bootstrap must finish before Vue emits loaded or ActionCable subscribes.
+// EVIRMA: Signed bootstrap must finish before Vue emits loaded; App subscribes to ActionCable.
 import { bootstrapWidget } from '../widget/helpers/bootstrap';
 import i18nMessages from '../widget/i18n';
 import router from '../widget/router';
@@ -51,8 +50,4 @@ app.use(
 window.onload = async () => {
   if (window.chatwootBootstrap) await bootstrapWidget();
   window.WOOT_WIDGET = app.mount('#app');
-  window.actionCable = new ActionCableConnector(
-    window.WOOT_WIDGET,
-    window.chatwootPubsubToken
-  );
 };
