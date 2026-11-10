@@ -4,6 +4,11 @@ class Messages::MarkdownRenderers::TelegramRenderer < Messages::MarkdownRenderer
     @list_item_number = 0
   end
 
+  # EVIRMA: Telegram parses the result as HTML and rejects the whole message on a bare "<" or "&".
+  def text(node)
+    out(CGI.escapeHTML(node.string_content))
+  end
+
   def strong(_node)
     out('<strong>', :children, '</strong>')
   end
@@ -13,11 +18,11 @@ class Messages::MarkdownRenderers::TelegramRenderer < Messages::MarkdownRenderer
   end
 
   def code(node)
-    out('<code>', node.string_content, '</code>')
+    out('<code>', CGI.escapeHTML(node.string_content), '</code>')
   end
 
   def link(node)
-    out('<a href="', node.url, '">', :children, '</a>')
+    out('<a href="', CGI.escapeHTML(node.url), '">', :children, '</a>')
   end
 
   def strikethrough(_node)
@@ -29,7 +34,7 @@ class Messages::MarkdownRenderers::TelegramRenderer < Messages::MarkdownRenderer
   end
 
   def code_block(node)
-    out('<pre>', node.string_content, '</pre>')
+    out('<pre>', CGI.escapeHTML(node.string_content), '</pre>')
   end
 
   def html(node)
