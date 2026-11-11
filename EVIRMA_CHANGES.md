@@ -334,3 +334,7 @@ EVIRMA: `app/javascript/sdk/sdk.css` объявляет на `:root` стран�
 ## Рассылка ActionCable: устаревшие номера подписки
 
 EVIRMA: `ActionCableBroadcastJob` перед рассылкой отбрасывает номера подписки, которые больше не принадлежат ни пользователю, ни связи контакта с каналом. Задание, поставленное до входа гостя, не доставит события опознанного контакта на сменённый при входе номер. Потоки `account_<id>` не проверяются. Цена — два запроса к базе на задание. Тест — `spec/jobs/action_cable_broadcast_job_spec.rb`.
+
+## Перенос SaleBot: заявленный пользователь Evirma
+
+EVIRMA: `deploy/evirma/salebot/claimed_user.rb` пишет `evirma_user_id` из SaleBot в атрибут контакта `claimed_evirma_user_id`. Значение не проверено, поэтому `identifier` не меняется. Тест — `spec/evirma/evirma_salebot_claimed_user_spec.rb`.
