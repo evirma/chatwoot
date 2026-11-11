@@ -13,6 +13,9 @@ import conversation from '../store/modules/conversation';
 // EVIRMA: Stub only the read receipt request while exercising the real store action.
 import { API } from 'widget/helpers/axios';
 
+const { connect } = vi.hoisted(() => ({ connect: vi.fn() }));
+vi.mock('widget/helpers/actionCable', () => ({ default: { connect } }));
+
 describe('App availability-changed', () => {
   let store;
   let wrapper;
@@ -97,6 +100,7 @@ describe('App availability-changed', () => {
         window.removeEventListener(event, handler)
       );
     emitter.all.clear();
+    connect.mockClear();
     delete window.chatwootWebChannel;
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -164,8 +168,8 @@ describe('App availability-changed', () => {
     );
   });
 
-  it('refreshes agent availability every 60 seconds and stops after unmount', async () => {
-    // EVIRMA: Keep host availability current without a presence websocket event.
+  // EVIRMA: A hidden widget must not poll agents or open a websocket until the visitor opens it.
+  it('polls agents and subscribes to ActionCable only while the widget is open', async () => {
     wrapper.unmount();
     wrapper = null;
     vi.useFakeTimers();
@@ -173,27 +177,37 @@ describe('App availability-changed', () => {
       global: { plugins: [store, router], stubs: { 'router-view': true } },
     });
     const dispatch = vi.spyOn(store, 'dispatch');
-    dispatch.mockClear();
+    const fetchAgents = () =>
+      dispatch.mock.calls.filter(
+        ([type]) => type === 'agent/fetchAvailableAgents'
+      ).length;
+    const toggle = async isOpen => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: `chatwoot-widget:${JSON.stringify({ event: 'toggle-open', isOpen })}`,
+        })
+      );
+      await nextTick();
+    };
 
-    await vi.advanceTimersByTimeAsync(59 * 1000 + 999);
-    expect(dispatch).not.toHaveBeenCalledWith(
-      'agent/fetchAvailableAgents',
-      'token'
-    );
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(fetchAgents()).toBe(0);
+    expect(connect).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(1);
-    expect(dispatch).toHaveBeenCalledExactlyOnceWith(
-      'agent/fetchAvailableAgents',
-      'token'
-    );
-
+    await toggle(true);
+    expect(fetchAgents()).toBe(1);
+    expect(connect).toHaveBeenCalledExactlyOnceWith(expect.anything(), {
+      catchUp: true,
+    });
     await vi.advanceTimersByTimeAsync(60 * 1000);
-    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(fetchAgents()).toBe(2);
+
+    await toggle(false);
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(fetchAgents()).toBe(2);
 
     wrapper.unmount();
     wrapper = null;
-    await vi.advanceTimersByTimeAsync(60 * 1000);
-    expect(dispatch).toHaveBeenCalledTimes(2);
   });
 
   it('uses the header availability rule outside business hours', async () => {

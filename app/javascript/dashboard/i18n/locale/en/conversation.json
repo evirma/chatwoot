@@ -1,5 +1,11 @@
 {
   "CONVERSATION": {
+    "EVIRMA_MESSAGE_SOURCE": {
+      "WB": "WB site",
+      "SITE": "Evirma site",
+      "TELEGRAM": "Telegram",
+      "MAX": "MAX"
+    },
     "EVIRMA_MESSAGE_EDIT": {
       "EDIT": "Edit",
       "EDITING": "Editing message",
