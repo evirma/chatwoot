@@ -101,6 +101,27 @@ describe('Widget ActionCableConnector', () => {
     expect(originalSubscription.unsubscribe).toHaveBeenCalledOnce();
   });
 
+  // EVIRMA: The first open subscribes once with the latest token and recovers missed updates.
+  it('connects lazily with the token refreshed before the first open', () => {
+    delete window.actionCable;
+    createSubscription.mockClear();
+
+    ActionCableConnector.refreshConnector('identified-pubsub');
+    expect(createSubscription).not.toHaveBeenCalled();
+
+    ActionCableConnector.connect(app, { catchUp: true });
+    ActionCableConnector.connect(app, { catchUp: true });
+
+    expect(createSubscription).toHaveBeenCalledOnce();
+    expect(createSubscription.mock.calls[0][0].pubsub_token).toBe(
+      'identified-pubsub'
+    );
+    expect(mockDispatch).toHaveBeenCalledWith('conversation/setLastMessageId');
+    expect(mockDispatch).toHaveBeenCalledWith(
+      'conversation/syncLatestMessages'
+    );
+  });
+
   // EVIRMA: Cross-channel changes update history without creating a notification.
   it('delivers a history deletion to the history store', () => {
     const message = { id: 10, content_attributes: { deleted: true } };

@@ -6,6 +6,7 @@ import { computed, provide, ref, watch } from 'vue';
 import { setHeader } from 'widget/helpers/axios';
 import addHours from 'date-fns/addHours';
 import { IFrameHelper, RNHelper } from 'widget/helpers/utils';
+import ActionCableConnector from 'widget/helpers/actionCable';
 import configMixin from './mixins/configMixin';
 import { getLocale } from './helpers/urlParamsHelper';
 import { getLanguageDirection } from 'dashboard/components/widgets/conversation/advancedFilterItems/languages';
@@ -118,6 +119,11 @@ export default {
     },
   },
   watch: {
+    isWidgetOpen(isOpen) {
+      if (!isOpen) return;
+      this.fetchAvailableAgents(window.chatwootWebChannel.websiteToken);
+      ActionCableConnector.connect(this, { catchUp: true });
+    },
     activeCampaign() {
       this.setCampaignView();
     },
@@ -138,11 +144,15 @@ export default {
   },
   mounted() {
     const { websiteToken, locale, widgetColor } = window.chatwootWebChannel;
-    // EVIRMA: Keep the host's availability status current without websocket updates.
+    // EVIRMA: Keep the host's working-hours status current. A hidden widget sends no requests:
+    // agents are polled and ActionCable subscribes only while the widget is open.
     this.agentAvailabilityRefreshInterval = setInterval(() => {
       this.availabilityTime = new Date();
-      this.fetchAvailableAgents(websiteToken);
+      if (this.isWidgetOpen || !this.isIFrame) {
+        this.fetchAvailableAgents(websiteToken);
+      }
     }, AGENT_AVAILABILITY_REFRESH_INTERVAL);
+    if (!this.isIFrame) ActionCableConnector.connect(this);
     this.setLocale(locale);
     this.setWidgetColor(widgetColor);
     this.setWidgetColorVariable(widgetColor);
