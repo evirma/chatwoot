@@ -596,6 +596,20 @@ RSpec.describe Messages::MarkdownRendererService, type: :service do
         expect(result).to eq('&lt;a title=&quot;1 &gt; 0&quot;&gt;text&lt;/a&gt;')
       end
 
+      # EVIRMA: Telegram rejects the whole message on a bare "<", e.g. "(<14 дней)" — Unsupported start tag.
+      it 'escapes special characters in plain text for Telegram HTML parse mode' do
+        result = described_class.new('полки включены раньше (<14 дней), 5 > 3 & Co', 'Channel::Telegram').render
+
+        expect(result).to eq('полки включены раньше (&lt;14 дней), 5 &gt; 3 &amp; Co')
+      end
+
+      it 'escapes special characters in code and links for Telegram HTML parse mode' do
+        content = '`a<b` [ссылка](https://evirma.ru/?a=1&b=2)'
+        result = described_class.new(content, 'Channel::Telegram').render
+
+        expect(result).to eq('<code>a&lt;b</code> <a href="https://evirma.ru/?a=1&amp;b=2">ссылка</a>')
+      end
+
       it 'preserves HTML block content for Twilio WhatsApp channels' do
         channel = instance_double(Channel::TwilioSms, whatsapp?: true)
         result = described_class.new(html_block, 'Channel::TwilioSms', channel).render

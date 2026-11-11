@@ -116,6 +116,42 @@ RSpec.describe Telegram::SendAttachmentsService do
       end
     end
 
+    # EVIRMA: Telegram cannot download from support.evirma.ru, so photos must be uploaded, not linked.
+    context 'when photos are sent' do
+      before do
+        attach_file_to_message(message, 'image', 'sample.png', 'image/png')
+        message.save!
+      end
+
+      it 'uploads the file in the media group instead of passing its URL' do
+        service.perform
+
+        expect(a_request(:post, "#{telegram_api_url}/sendMediaGroup").with do |request|
+          request.headers['Content-Type'].start_with?('multipart/form-data') &&
+            request.body.include?('attach://file0') && request.body.include?('filename="sample.png"') &&
+            request.body.exclude?('active_storage')
+        end).to have_been_made.once
+      end
+    end
+
+    # EVIRMA: The Bot API relay answers HTTP 200 with {"ok": false} when Telegram rejects the album.
+    context 'when the relay answers 200 with ok false' do
+      before do
+        stub_request(:post, "#{telegram_api_url}/sendMediaGroup")
+          .to_return(status: 200, body: { ok: false, error_code: 400,
+                                          description: 'Bad Request: failed to send message #1: "WEBPAGE_CURL_FAILED"' }.to_json,
+                     headers: { 'Content-Type' => 'application/json' })
+        attach_file_to_message(message, 'image', 'sample.png', 'image/png')
+        message.save!
+      end
+
+      it 'marks the message failed instead of raising' do
+        expect(service.perform).to be_nil
+        expect(message.reload.status).to eq('failed')
+        expect(message.external_error).to include('WEBPAGE_CURL_FAILED')
+      end
+    end
+
     def attach_files(message)
       attach_file_to_message(message, 'file', 'sample.pdf', 'application/pdf')
       attach_file_to_message(message, 'image', 'sample.png', 'image/png')

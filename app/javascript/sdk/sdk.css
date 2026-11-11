@@ -1,6 +1,6 @@
 :root {
-  --b-100: #f2f3f7;
-  --s-700: #37546d;
+  --cw-b-100: #f2f3f7;
+  --cw-s-700: #37546d;
 }
 
 .woot-widget-holder {
@@ -19,7 +19,7 @@
 .woot-widget-holder.woot-widget-holder--flat {
   box-shadow: none;
   border-radius: 0;
-  border: 1px solid var(--b-100);
+  border: 1px solid var(--cw-b-100);
 }
 
 .woot-widget-holder iframe {
@@ -129,7 +129,7 @@
 
 .woot-widget-bubble.woot-widget--expanded.woot-widget-bubble-color--lighter
   div {
-  color: var(--s-700);
+  color: var(--cw-s-700);
 }
 
 .woot-widget-bubble.woot-widget--expanded svg {
@@ -160,7 +160,7 @@
 }
 
 .woot-widget-bubble.woot-widget-bubble-color--lighter path {
-  fill: var(--s-700);
+  fill: var(--cw-s-700);
 }
 
 @media only screen and (min-width: 667px) {
@@ -190,7 +190,7 @@
 
 .woot-widget-bubble-color--lighter.woot--close::before,
 .woot-widget-bubble-color--lighter.woot--close::after {
-  background-color: var(--s-700);
+  background-color: var(--cw-s-700);
 }
 
 .woot--close::before {

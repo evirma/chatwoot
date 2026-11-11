@@ -7,6 +7,7 @@ import ChatSendButton from 'widget/components/ChatSendButton.vue';
 import { useAttachments } from '../composables/useAttachments';
 import FluentIcon from 'shared/components/FluentIcon/Index.vue';
 import ResizableTextArea from 'shared/components/ResizableTextArea.vue';
+import { IFrameHelper } from 'widget/helpers/utils';
 
 const EmojiPicker = defineAsyncComponent(
   () => import('shared/components/emoji/EmojiPicker.vue')
@@ -63,11 +64,17 @@ export default {
     showSendButton() {
       return this.userInput.length > 0;
     },
+    // EVIRMA: The hidden iframe stays on the host page; it must not take focus or send keystrokes.
+    isInputActive() {
+      return this.isWidgetOpen || !IFrameHelper.isIFrame();
+    },
   },
   watch: {
     isWidgetOpen(isWidgetOpen) {
       if (isWidgetOpen) {
         this.focusInput();
+      } else if (IFrameHelper.isIFrame()) {
+        this.$refs.chatInput?.$refs.textarea?.blur();
       }
     },
   },
@@ -96,6 +103,7 @@ export default {
       this.focusInput();
     },
     handleEnterKeyPress(e) {
+      if (!this.isInputActive) return;
       if (e.keyCode === 13 && !e.shiftKey) {
         e.preventDefault();
         this.handleButtonClick();
@@ -146,6 +154,7 @@ export default {
       ref="chatInput"
       v-model="userInput"
       :rows="1"
+      :auto-focus="isInputActive"
       :aria-label="$t('CHAT_PLACEHOLDER')"
       :placeholder="$t('CHAT_PLACEHOLDER')"
       class="user-message-input reset-base"

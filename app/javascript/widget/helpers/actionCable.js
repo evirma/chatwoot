@@ -24,6 +24,11 @@ class ActionCableConnector extends BaseActionCableConnector {
   static refreshConnector(pubsubToken) {
     const connector = window.actionCable;
     if (window.chatwootPubsubToken === pubsubToken) return;
+    // EVIRMA: Before the first open there is no subscription; connect() will use the new token.
+    if (!connector) {
+      window.chatwootPubsubToken = pubsubToken;
+      return;
+    }
 
     const oldSubscription = connector.subscription;
     const identifier = JSON.parse(oldSubscription.identifier);
@@ -37,6 +42,20 @@ class ActionCableConnector extends BaseActionCableConnector {
       }
     );
     window.chatwootPubsubToken = pubsubToken;
+  }
+
+  // EVIRMA: A hidden widget keeps no websocket. The first open subscribes and loads the
+  // messages, history and status that changed since the page loaded, as after a reconnect.
+  static connect(app, { catchUp = false } = {}) {
+    if (window.actionCable) return;
+    window.actionCable = new ActionCableConnector(
+      app,
+      window.chatwootPubsubToken
+    );
+    if (catchUp) {
+      window.actionCable.setLastMessageId();
+      window.actionCable.onReconnect();
+    }
   }
 
   constructor(app, pubsubToken) {

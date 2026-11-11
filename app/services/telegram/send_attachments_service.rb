@@ -6,8 +6,7 @@ require 'faraday/multipart'
 # Audio can be clubbed together and send as a media group, but can't be mixed with other types
 # Documents are sent individually
 
-# We are using `HTTP URL` to send media attachments, telegram will directly download the media from the URL and send it to the user.
-# But for documents, we need to send the file as a multipart request. as telegram only support pdf and zip for the download from the URL option.
+# All attachments are uploaded as multipart files (media groups reference them via attach://).
 
 # ref: `In sendDocument, sending by URL will currently only work for GIF, PDF and ZIP files.`
 # ref: `https://core.telegram.org/bots/api#senddocument`
@@ -55,7 +54,7 @@ class Telegram::SendAttachmentsService
 
     message.attachments.each do |attachment|
       type = attachment_type(attachment[:file_type])
-      attachment_data = { type: type, media: attachment.download_url, attachment: attachment }
+      attachment_data = { type: type, attachment: attachment }
       case type
       when 'document'
         attachments_by_type[:document] << attachment_data
@@ -73,14 +72,23 @@ class Telegram::SendAttachmentsService
     { 'audio' => 'audio', 'image' => 'photo', 'file' => 'document', 'video' => 'video' }[file_type] || 'document'
   end
 
+  # EVIRMA: Upload the files instead of passing their URLs: Telegram cannot download from support.evirma.ru
+  # (WEBPAGE_CURL_FAILED), so photos and videos never reached the client.
   def media_group_request(chat_id, attachments, reply_to_message_id)
-    HTTParty.post("#{channel.telegram_api_url}/sendMediaGroup",
-                  body: {
-                    chat_id: chat_id,
-                    **business_connection_body,
-                    media: attachments.map { |hash| hash.except(:attachment) }.to_json,
-                    reply_to_message_id: reply_to_message_id
-                  })
+    payload = { chat_id: chat_id, **business_connection_body }
+    payload[:reply_to_message_id] = reply_to_message_id if reply_to_message_id
+    media = attachments.each_with_index.map do |hash, index|
+      payload[:"file#{index}"] = media_file_part(hash[:attachment])
+      { type: hash[:type], media: "attach://file#{index}" }
+    end
+    payload[:media] = media.to_json
+
+    parse_faraday_response(multipart_post_connection.post("#{channel.telegram_api_url}/sendMediaGroup", payload))
+  end
+
+  def media_file_part(attachment)
+    file = attachment.file
+    Faraday::Multipart::FilePart.new(StringIO.new(file.download), file.content_type || 'application/octet-stream', file.filename.to_s)
   end
 
   def send_individual_attachments(attachments)
@@ -145,7 +153,8 @@ class Telegram::SendAttachmentsService
   end
 
   def handle_response(response)
-    if response.success?
+    # EVIRMA: The Bot API relay answers HTTP 200 even for {"ok": false}; only "ok" tells a delivered message.
+    if response.success? && response.parsed_response.is_a?(Hash) && response.parsed_response['ok'] == true
       # EVIRMA: Individual documents and all members of media/audio groups are separate Telegram messages.
       result = response.parsed_response['result']
       @message_ids |= (result.is_a?(Array) ? result : [result]).pluck('message_id')

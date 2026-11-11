@@ -6,6 +6,12 @@ import { useExactTimestamp } from 'shared/composables/useExactTimestamp';
 import MessageStatus from './MessageStatus.vue';
 import Icon from 'next/icon/Icon.vue';
 import { useInbox } from 'dashboard/composables/useInbox';
+import { useMapGetter } from 'dashboard/composables/store';
+import { useI18n } from 'vue-i18n';
+import {
+  EVIRMA_MESSAGE_SOURCE_ICONS,
+  getEvirmaMessageSource,
+} from 'dashboard/helper/evirmaMessageSource';
 import { useMessageContext } from './provider.js';
 
 import { MESSAGE_STATUS, MESSAGE_TYPES } from './constants';
@@ -13,6 +19,7 @@ import { MESSAGE_STATUS, MESSAGE_TYPES } from './constants';
 const exactTimestamp = useExactTimestamp();
 
 const {
+  inbox,
   isAFacebookInbox,
   isALineChannel,
   isAPIInbox,
@@ -34,6 +41,27 @@ const {
   messageType,
   contentAttributes,
 } = useMessageContext();
+
+// EVIRMA: Show where an incoming customer message came from next to its time.
+const { t } = useI18n();
+const currentChat = useMapGetter('getSelectedChat');
+const evirmaSourceLabels = {
+  WB: () => t('CONVERSATION.EVIRMA_MESSAGE_SOURCE.WB'),
+  SITE: () => t('CONVERSATION.EVIRMA_MESSAGE_SOURCE.SITE'),
+  TELEGRAM: () => t('CONVERSATION.EVIRMA_MESSAGE_SOURCE.TELEGRAM'),
+  MAX: () => t('CONVERSATION.EVIRMA_MESSAGE_SOURCE.MAX'),
+};
+const evirmaSource = computed(() => {
+  if (messageType.value !== MESSAGE_TYPES.INCOMING || isPrivate.value) {
+    return null;
+  }
+  return getEvirmaMessageSource({
+    channelType: inbox.value?.channelType,
+    webhookUrl: inbox.value?.webhookUrl,
+    sourceHost: contentAttributes.value?.evirmaSourceHost,
+    conversationSource: currentChat.value?.custom_attributes?.source,
+  });
+});
 
 const readableTime = computed(() =>
   messageTimestamp(createdAt.value, 'LLL d, h:mm a')
@@ -149,6 +177,14 @@ const statusToShow = computed(() => {
         {{ readableTime }}
       </time>
     </div>
+    <span
+      v-if="evirmaSource"
+      class="inline-flex items-center gap-1"
+      data-test-id="evirma-message-source"
+    >
+      <Icon :icon="EVIRMA_MESSAGE_SOURCE_ICONS[evirmaSource]" class="size-3" />
+      {{ evirmaSourceLabels[evirmaSource]() }}
+    </span>
     <!-- EVIRMA: The server edit timestamp is also delivered by message.updated. -->
     <span v-if="contentAttributes.editedAt && !contentAttributes.deleted">
       {{ $t('CONVERSATION.EVIRMA_MESSAGE_EDIT.EDITED') }}
