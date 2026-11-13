@@ -275,9 +275,7 @@ class Rack::Attack
   end
 
   ## Prevent abuse of contact search api
-  # EVIRMA: default 600 instead of 100. The Evirma backend finds the widget user's contact here
-  # (~120/min, p95 ~180/min), and the limit is shared per account with agents searching in the dashboard.
-  throttle('/api/v1/accounts/:account_id/contacts/search', limit: ENV.fetch('RATE_LIMIT_CONTACT_SEARCH', '600').to_i, period: 1.minute) do |req|
+  throttle('/api/v1/accounts/:account_id/contacts/search', limit: ENV.fetch('RATE_LIMIT_CONTACT_SEARCH', '100').to_i, period: 1.minute) do |req|
     match_data = %r{/api/v1/accounts/(?<account_id>\d+)/contacts/search}.match(req.path)
     match_data[:account_id] if match_data.present?
   end
