@@ -338,3 +338,7 @@ EVIRMA: `ActionCableBroadcastJob` перед рассылкой отбрасыв
 ## Перенос SaleBot: заявленный пользователь Evirma
 
 EVIRMA: `deploy/evirma/salebot/claimed_user.rb` пишет `evirma_user_id` из SaleBot в атрибут контакта `claimed_evirma_user_id`. Значение не проверено, поэтому `identifier` не меняется. Тест — `spec/evirma/evirma_salebot_claimed_user_spec.rb`.
+
+## Окружение: лимит поиска контактов
+
+EVIRMA: `docker/Dockerfile` задаёт в образе `RATE_LIMIT_CONTACT_SEARCH=600`. Это лимит Rack::Attack на `/api/v1/accounts/:account_id/contacts/search` в минуту на аккаунт из `config/initializers/rack_attack.rb`, по умолчанию 100. Бэкенд Evirma ищет здесь контакт пользователя виджета 175–280 раз в минуту и делит лимит с поиском операторов в панели. При 100 в минуту 429 получали и бэкенд, и операторы. Переменная задана в образе: живой compose прода не в Git, а `deploy.sh` на сервере меняет в нём только тег. Файл окружения на сервере главнее значения из образа. При слиянии upstream сохранить строку `ENV` в финальной стадии Dockerfile. Проверка после выкладки: `docker exec chatwoot-rails-1 printenv RATE_LIMIT_CONTACT_SEARCH` печатает `600`.
