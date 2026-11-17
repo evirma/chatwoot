@@ -135,7 +135,7 @@ ENV VIPS_BLOCK_UNTRUSTED=1
 
 # EVIRMA: contact search limit per account per minute (config/initializers/rack_attack.rb, upstream default 100).
 # The Evirma backend finds widget users there and shares the limit with agents. The server env file still wins.
-ENV RATE_LIMIT_CONTACT_SEARCH=600
+ENV RATE_LIMIT_CONTACT_SEARCH=1000
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
